@@ -4,6 +4,10 @@ Competition: https://www.kaggle.com/competitions/titanic
 
 Predict which passengers survived the Titanic shipwreck.
 
+**Best public score: 0.80143** (2nd submission, up from the 0.77511 tutorial baseline).
+
+No cross-validation leakage: family-group survival features are rebuilt inside each fold from training labels only.
+
 ## Setup
 
 ```bash
