@@ -11,3 +11,10 @@ v8_class_weights,0.94641,,0,Class weights: each fraud counts ~59x in training
 v8_class_weights_sqrt,0.94728,,0,Softer class weights: each fraud counts ~7.7x
 v8_undersample,0.94678,,0,Random undersampling to 1 fraud : 10 normal
 v8_smote,0.91607,,0,SMOTE-NC: synthetic frauds up to 10% of normals
+v9_lightgbm_woe,0.94855,0.00337,184,Tuned LightGBM + max_bin 1023 + in-fold exact-value WoE (m=40) + value frequencies + velocity-zero
+v10_spline_logreg,0.94721,0.00342,100,Spline logistic regression + exact-value categories + velocity-zero + in-fold WoE + auth interactions
+v14_lightgbm_extratrees,0.94758,0.00346,238,"LightGBM extra_trees, depth 5 + v9 features"
+v12_xgboost_woe,0.94847,0.00318,445,"XGBoost + v9 features (max_bin 1024, one-hot categoricals)"
+v13_catboost_woe,0.9478,0.00341,1977,"CatBoost depth 4, rsm 0.4 + v9 features + exact hours/age as categorical"
+v11_ebm,0.94927,0.00312,724,"Explainable Boosting Machine (max_bins 1024, 10 interactions, 4 bags) + WoE features"
+v15_stack,0.94941,,0,"LogReg stack of v9_lightgbm_woe, v10_spline_logreg, v11_ebm, v12_xgboost_woe, v13_catboost_woe, v14_lightgbm_extratrees"
