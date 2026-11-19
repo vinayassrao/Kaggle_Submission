@@ -11,7 +11,8 @@ Predict the probability that a card transaction is fraud (`is_fraud`). Only 1.67
 python -m pip install pandas scikit-learn lightgbm xgboost catboost imbalanced-learn matplotlib
 ```
 
-Download the competition data into `data/` (train.csv, test.csv, sample_submission.csv). Run scripts from this folder.
+Download the competition data from https://www.kaggle.com/competitions/playground-series-s6e11/data into `data/` (train.csv, test.csv, sample_submission.csv).
+Optional original dataset (CC0, 20k rows): https://www.kaggle.com/datasets/uditjain13/credit-card-fraud-detection-2026 → `data/credit_card_fraud_2026.csv`. Run scripts from this folder.
 
 ## Iterations (5-fold stratified CV, seed 42, same folds for every version)
 

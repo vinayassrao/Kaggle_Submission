@@ -116,7 +116,7 @@ Values are cast with `.astype(str)`, so each exact float value is one category (
 
 ## 2. Original 20k dataset
 
-*Pending: `credit_card_fraud_2026.csv` is not on disk at the moment. Sections 2.1 to 2.5 will be run as soon as it's re-downloaded.*
+*Pending: `credit_card_fraud_2026.csv` is not on disk at the moment. Sections 2.1 to 2.5 will be run as soon as it's re-downloaded. Source: https://www.kaggle.com/datasets/uditjain13/credit-card-fraud-detection-2026*
 
 ## 3.1 Calibration / reliability of oof_v4 (20 equal-frequency bins)
 

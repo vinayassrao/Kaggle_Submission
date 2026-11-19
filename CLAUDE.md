@@ -36,4 +36,5 @@ After modelling for a competition is complete (and again whenever new iterations
 
 ## Environment notes
 - Windows, Python 3.14, Git Bash + PowerShell. No Kaggle API token is set up: the user downloads data manually into `data/`.
+- **Whenever a needed dataset file is missing, give the user the direct download link** (competition Data tab, e.g. `https://www.kaggle.com/competitions/<slug>/data`, or the original dataset's Kaggle page) together with the exact folder to put it in. Never just say "re-download it".
 - Kaggle pages render client-side, so web fetches only return the title. Ask the user for the Overview/Evaluation text.
