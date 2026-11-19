@@ -60,7 +60,7 @@ def blank(w, h):
 
 train, test, y = load()
 results = pd.read_csv(RESULTS)
-results = results[results.iteration.str.match(r"v\d")].sort_values("iteration").reset_index(drop=True)
+results = results[results.iteration.str.match(r"v[1-7]_")].sort_values("iteration").reset_index(drop=True)
 
 # 1. Imbalance: 1000 dots -------------------------------------------------------------
 fig, ax = plt.subplots(figsize=(10, 2.8))
@@ -78,10 +78,10 @@ ax.set_title(f"1,000 transactions: only {n_fraud} are fraud (orange) = {rate * 1
 save(fig, "01_imbalance.png")
 
 # 2. Workflow / iterations -------------------------------------------------------------
-fig, ax = blank(12.5, 2.6)
+fig, ax = blank(12.6, 2.6)
 steps = [("v1", "Logistic\nregression"), ("v2", "LightGBM"), ("v3", "+ new\nfeatures"), ("v4", "Tuned\nLightGBM"),
-         ("v5", "XGBoost"), ("v6", "CatBoost"), ("v7", "Ensemble\n(blend)")]
-w, gap = 1.5, 0.25
+         ("v5", "XGBoost"), ("v6", "CatBoost"), ("v7", "Ensemble\n(blend)"), ("v8", "Imbalance\ntricks")]
+w, gap = 1.3, 0.22
 for i, (v, s) in enumerate(steps):
     x = 0.1 + i * (w + gap)
     dark = v in ("v4", "v7")
@@ -260,5 +260,97 @@ if len(models) >= 2:
     ax.set_yticks(range(len(models))); ax.set_yticklabels(short); ax.grid(False)
     ax.set_title("How similar are the models' rankings?", loc="left", fontsize=12)
     save(fig, "12_model_correlation.png")
+
+
+
+# 16. v8 imbalance methods --------------------------------------------------------------------
+p = os.path.join(ROOT, "v8_imbalance_results.csv")
+if os.path.exists(p):
+    r = pd.read_csv(p).drop_duplicates("roc_auc", keep="first")
+    names = ["No handling (v4)", "Class weights\n(fraud x59)", "Soft weights\n(fraud x7.7)", "Undersampling\n(1:10)", "SMOTE"]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 3.8))
+    for ax, col, ttl, lo in [(axes[0], "roc_auc", "ROC AUC (competition metric)", 0.90), (axes[1], "pr_auc", "PR-AUC (average precision)", 0.30)]:
+        vals = r[col].values
+        ax.bar(range(len(vals)), vals, color=[BLUE] + [AXIS] * (len(vals) - 1), width=0.6)
+        for i, v in enumerate(vals):
+            ax.text(i, v + (0.001 if col == "roc_auc" else 0.005), f"{v:.4f}", ha="center", fontsize=9)
+        ax.set_xticks(range(len(vals))); ax.set_xticklabels(names[:len(vals)], fontsize=8.5)
+        ax.set_ylim(lo, vals.max() * (1.006 if col == "roc_auc" else 1.08)); ax.set_title(ttl, loc="left", fontsize=11.5)
+        ax.grid(axis="x", visible=False)
+    fig.suptitle("v8: no imbalance trick beats doing nothing (blue)", x=0.01, ha="left", fontweight="bold", fontsize=13)
+    fig.tight_layout()
+    save(fig, "16_imbalance_methods.png")
+
+# 17. Resampling concepts ---------------------------------------------------------------------------
+rng = np.random.default_rng(7)
+neg = rng.normal([0, 0], 1.0, (120, 2)); pos = rng.normal([1.8, 1.6], 0.45, (6, 2))
+fig, axes = plt.subplots(1, 4, figsize=(14, 3.4))
+def panel(ax, n, p_, ttl, sizes=(18, 40), extra=None):
+    ax.scatter(n[:, 0], n[:, 1], s=sizes[0], color=AXIS, edgecolor="none")
+    ax.scatter(p_[:, 0], p_[:, 1], s=sizes[1], color=ORANGE, edgecolor=SURFACE, linewidth=1)
+    if extra is not None:
+        ax.scatter(extra[:, 0], extra[:, 1], s=30, facecolor="none", edgecolor=ORANGE, linewidth=1.5)
+    ax.set_title(ttl, loc="left", fontsize=11); ax.set_xticks([]); ax.set_yticks([]); ax.set_xlim(-3, 3.5); ax.set_ylim(-3, 3.2)
+panel(axes[0], neg, pos, "Original: 6 fraud, 120 normal")
+panel(axes[1], neg, pos, "Class weights: frauds count\nmore (bigger dots)", sizes=(18, 220))
+panel(axes[2], neg[rng.choice(120, 30, replace=False)], pos, "Undersampling: throw away\nmost normal rows")
+a, b = rng.integers(0, 6, 14), rng.integers(0, 6, 14); t = rng.random((14, 1))
+synth = pos[a] + t * (pos[b] - pos[a])
+panel(axes[3], neg, pos, "SMOTE: invent new frauds\nbetween real ones (hollow)", extra=synth)
+fig.tight_layout()
+save(fig, "17_resampling.png")
+
+# 18. Sigmoid ---------------------------------------------------------------------------------------
+z = np.linspace(-8, 8, 300)
+fig, ax = plt.subplots(figsize=(8, 3.4))
+ax.plot(z, 1 / (1 + np.exp(-z)), color=BLUE, lw=2.5)
+ax.axhline(0.5, color=AXIS, ls="--", lw=1)
+for zz, lbl in [(-4, "few red-flag points\n-> 2%"), (0, "50 / 50"), (4, "lots of points\n-> 98%")]:
+    pz = 1 / (1 + np.exp(-zz)); ax.scatter([zz], [pz], color=ORANGE, s=60, zorder=3, edgecolor=SURFACE, linewidth=2)
+    ax.text(zz + 0.3, pz - 0.13 if zz > 0 else pz + 0.06, lbl, fontsize=9.5)
+ax.set_xlabel("Total points from the scorecard (sum of weight x clue)"); ax.set_ylabel("Probability of fraud")
+ax.set_title("The sigmoid squashes any score into 0..1", loc="left")
+save(fig, "18_sigmoid.png")
+
+# 19. Confusion matrix at top 2% ------------------------------------------------------------------
+oof = np.load(os.path.join(OOF_DIR, "v7_ensemble_oof.npy"))
+flag = oof >= np.quantile(oof, 0.98)
+tp, fp = int((flag & (y == 1)).sum()), int((flag & (y == 0)).sum())
+fn, tn = int((~flag & (y == 1)).sum()), int((~flag & (y == 0)).sum())
+fig, ax = blank(9, 4.2)
+ax.text(2.6, 3.85, "Model says FRAUD", ha="center", fontweight="bold"); ax.text(6.0, 3.85, "Model says OK", ha="center", fontweight="bold")
+ax.text(0.15, 2.85, "Really\nfraud", va="center", fontweight="bold"); ax.text(0.15, 1.25, "Really\nnormal", va="center", fontweight="bold")
+box(ax, 1.0, 2.1, 3.2, 1.5, f"True positive\n{tp:,}\ncaught!", BLUE, tc="#ffffff", bold=True)
+box(ax, 4.4, 2.1, 3.2, 1.5, f"False negative\n{fn:,}\nmissed fraud", LIGHT_ORANGE)
+box(ax, 1.0, 0.5, 3.2, 1.5, f"False positive\n{fp:,}\nfalse alarm", LIGHT_ORANGE)
+box(ax, 4.4, 0.5, 3.2, 1.5, f"True negative\n{tn:,}\ncorrectly left alone", LIGHT_GRAY)
+ax.text(7.8, 2.85, f"Recall\n= {tp}/{tp + fn}\n= {tp / (tp + fn):.0%}", va="center", fontsize=9.5, color=INK2)
+ax.text(1.0, 0.1, f"Precision = {tp:,} / {tp + fp:,} = {tp / (tp + fp):.0%} of alarms are real fraud   (flagging the top 2%)", fontsize=9.5, color=INK2)
+save(fig, "19_confusion_matrix.png")
+
+# 20. A real decision tree (depth 2) -----------------------------------------------------------------
+from sklearn.tree import DecisionTreeClassifier  # noqa: E402
+cols = ["merchant_risk_score", "velocity_score", "cvv_retry_count", "ip_country_mismatch", "is_new_merchant"]
+dt = DecisionTreeClassifier(max_depth=2, min_samples_leaf=2000, random_state=0).fit(train[cols], y)
+tr_ = dt.tree_
+def node_txt(i):
+    n = tr_.n_node_samples[i]; r_ = tr_.value[i][0][1] / tr_.value[i][0].sum() if tr_.value[i][0].sum() > 1.5 else tr_.value[i][0][1]
+    return n, r_
+fig, ax = blank(12, 4.6)
+pos_ = {0: (4.5, 3.6), 1: (1.2, 2.0), 4: (7.8, 2.0), 2: (0.0, 0.2), 3: (2.6, 0.2), 5: (6.6, 0.2), 6: (9.2, 0.2)}
+for i, (x, yy) in pos_.items():
+    n, r_ = node_txt(i)
+    leaf = tr_.children_left[i] == -1
+    q = "" if leaf else f"{cols[tr_.feature[i]]} <= {tr_.threshold[i]:.1f} ?\n"
+    w = 2.5 if leaf else 3.0
+    box(ax, x, yy, w, 0.95, f"{q}{r_ * 100:.1f}% fraud (n={n:,})", (LIGHT_ORANGE if r_ > 0.05 else LIGHT_BLUE) if leaf else LIGHT_GRAY,
+        ec=AXIS, fs=9.5)
+for parent, (l, r_) in {0: (1, 4), 1: (2, 3), 4: (5, 6)}.items():
+    px, py = pos_[parent]; pw = 3.0
+    for child, lab in [(l, "yes"), (r_, "no")]:
+        cx, cy = pos_[child]; cw = 2.5 if tr_.children_left[child] == -1 else 3.0
+        arrow(ax, px + pw / 2, py, cx + cw / 2, cy + 0.95)
+        ax.text((px + pw / 2 + cx + cw / 2) / 2 + 0.1, (py + cy + 0.95) / 2, lab, color=INK2, fontsize=9.5)
+save(fig, "20_decision_tree.png")
 
 print("Saved", len(os.listdir(IMG)), "images")

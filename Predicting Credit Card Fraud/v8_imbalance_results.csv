@@ -1,0 +1,7 @@
+method,roc_auc,pr_auc
+v4 (no imbalance handling),0.9473673604397937,0.5137012193573568
+"No imbalance handling (same settings, AUC-only early stopping)",0.9473673604397937,0.5137012193573568
+Class weights: each fraud counts ~59x in training,0.9464076609581555,0.5066562263512584
+Softer class weights: each fraud counts ~7.7x,0.9472798236446117,0.5126951991465708
+Random undersampling to 1 fraud : 10 normal,0.946779356764903,0.5102574380542635
+SMOTE-NC: synthetic frauds up to 10% of normals,0.9160695544443327,0.3318611422754046

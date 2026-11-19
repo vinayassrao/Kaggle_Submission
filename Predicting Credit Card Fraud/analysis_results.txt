@@ -1,0 +1,51 @@
+== 1. Feature importance ==
+Validation AUC of the importance model: 0.94612
+                              gain_%  permutation_auc_drop
+merchant_risk_score            16.44               0.05242
+velocity_score                 11.21               0.05218
+cvv_retry_count                22.09               0.03130
+auth_method                    10.24               0.02068
+is_new_merchant                 6.96               0.01599
+customer_age                    5.02               0.01474
+billing_shipping_mismatch       3.84               0.00877
+used_vpn                        2.63               0.00644
+ip_country_mismatch             6.70               0.00497
+merchant_category               2.55               0.00253
+hours_since_last_txn            1.28               0.00239
+is_ai_generated_scam_attempt    1.27               0.00219
+is_foreign_transaction          2.80               0.00188
+amount_usd                      1.41               0.00109
+prior_disputes                  0.52               0.00083
+txn_count_last_24h              1.01               0.00079
+device_type                     0.57               0.00011
+account_balance_usd             0.94               0.00010
+card_type                       0.22               0.00008
+card_age_months                 0.49               0.00003
+channel                         0.32               0.00002
+time_of_day_hour                0.44              -0.00000
+distance_from_home_km           0.80              -0.00009
+day_of_week                     0.24              -0.00010
+
+== 2. Precision, recall, PR-AUC, thresholds (v7 ensemble OOF) ==
+ROC AUC 0.94744   PR-AUC (average precision) 0.51404   (a random model's PR-AUC = fraud rate = 0.0167)
+ flag top  recall precision  frauds caught  false alarms  alarms per catch
+    0.5%   24.9%     83.2%          2,911           589               0.2
+    1.0%   38.9%     65.0%          4,551         2,449               0.5
+    2.0%   54.0%     45.1%          6,313         7,687               1.2
+    5.0%   71.5%     23.9%          8,355        26,643               3.2
+   10.0%   83.1%     13.9%          9,708        60,288               6.2
+   20.0%   91.7%      7.7%         10,717       129,275              12.1
+Best-F1 threshold: score >= 0.9851 -> precision 53.8%, recall 47.2%, F1 0.503
+
+== 3. Are AI-generated scam frauds harder to catch? ==
+AI-scam frauds  n=   350  caught in top 5%: 93.1%   median suspicion rank: 0.995
+other frauds    n=11,339  caught in top 5%: 70.8%   median suspicion rank: 0.983
+AI-scam attempts that are fraud: 15.2%   vs other transactions: 1.63%
+
+== 4. Does strong authentication suppress fraud? ==
+auth method        fraud rate (all)   fraud rate (when another red flag is present)
+Biometric             0.50%               4.00%
+PIN                   0.87%               6.96%
+OTP                   1.41%              10.93%
+3D Secure             1.47%              11.33%
+No Authentication     6.44%              35.39%

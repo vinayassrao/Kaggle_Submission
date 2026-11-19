@@ -6,3 +6,8 @@ v4_lightgbm_tuned,0.94737,0.00311,188,"LightGBM, strong regularisation (depth 4,
 v5_xgboost,0.94712,0.00306,338,"XGBoost, regularised, raw features"
 v6_catboost,0.94619,0.00291,1731,"CatBoost, native categories, raw features"
 v7_ensemble,0.94744,,0,"Rank-average blend: v4_lightgbm_tuned 0.63, v5_xgboost 0.24, v6_catboost 0.12, v1_logistic_regression 0.01"
+v8_none,0.94737,,0,"No imbalance handling (same settings, AUC-only early stopping)"
+v8_class_weights,0.94641,,0,Class weights: each fraud counts ~59x in training
+v8_class_weights_sqrt,0.94728,,0,Softer class weights: each fraud counts ~7.7x
+v8_undersample,0.94678,,0,Random undersampling to 1 fraud : 10 normal
+v8_smote,0.91607,,0,SMOTE-NC: synthetic frauds up to 10% of normals

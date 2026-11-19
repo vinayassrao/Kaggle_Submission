@@ -6,42 +6,67 @@
 
 ## How to use this guide
 
-This guide assumes you have done (or read) the Titanic project, or that you are brand new. It explains everything from scratch, but this time the focus is on **improving a model step by step**: we build seven versions, and for each one we explain **what changed, why it should help, and whether it actually did**.
+This guide assumes you know **nothing** about machine learning. It has three parts:
+
+- **Part A: The project.** What the problem is and what the data looks like.
+- **Part B: The journey.** Eight versions of the model. For each one: **what changed, why it should help, and whether it actually did**, then four questions answered with the finished model.
+- **Part C: Terms and techniques.** Every word and method used in this project, explained in depth: how it works, why we use it, and its key settings, plus an "Explain like I'm 5" version of each. Whenever a term in Parts A or B confuses you, jump to Part C.
 
 Every important idea has two explanations:
 
 > **Explain like I'm 5:** a simple story version you can picture.
 
-...followed by the grown-up version. New words are in the **Glossary** at the end.
+...followed by the grown-up version.
 
 ---
 
 ## Table of contents
 
+**Part A: The project**
 1. What is this competition?
 2. The big challenge: fraud is rare
 3. How we are scored: AUC
 4. Setting up
 5. Looking at the data
-6. How we test every version fairly (cross-validation)
-7. **v1** Logistic regression (the baseline)
-8. **v2** LightGBM (gradient-boosted trees)
-9. **v3** Adding new features
-10. **v4** Tuning LightGBM (slow and steady)
-11. **v5** XGBoost
-12. **v6** CatBoost
-13. **v7** Ensemble (blending models)
-14. The whole journey on one page
-15. Submitting to Kaggle
-16. Common mistakes and how to fix them
-17. What to try next
-18. Glossary
+
+**Part B: The journey**
+6. How we test every version fairly
+7. v1 Logistic regression (the baseline)
+8. v2 LightGBM (gradient-boosted trees)
+9. v3 Adding new features
+10. v4 Tuning LightGBM
+11. v5 XGBoost
+12. v6 CatBoost
+13. v7 Ensemble
+14. v8 Imbalance techniques: class weights, undersampling, SMOTE
+15. The whole journey on one page
+16. Four questions answered with the model
+17. Submitting to Kaggle
+
+**Part C: Terms and techniques**
+- C1 The problem: features, target, classification, imbalance
+- C2 Measuring success: confusion matrix, precision, recall, F1, threshold, ROC AUC, PR-AUC
+- C3 Preparing data: encoding, scaling, feature engineering
+- C4 Testing honestly: validation, K-fold, stratification, OOF, leakage, seeds
+- C5 The models: logistic regression, decision trees, gradient boosting, LightGBM, XGBoost, CatBoost
+- C6 Controlling training: overfitting, early stopping, hyperparameters, regularisation
+- C7 Handling imbalance: class weights, undersampling, oversampling, SMOTE
+- C8 Understanding a model: gain and permutation importance
+- C9 Combining models: ensembles, rank averaging, weight search, correlation
+- C10 Kaggle-specific: public vs private leaderboard, synthetic data
+
+**Extras**
+18. Common mistakes and how to fix them
+19. What to try next
+20. Quick glossary
 
 ---
 
+# Part A: The project
+
 ## 1. What is this competition?
 
-Banks process millions of card payments every day. A tiny number of them are **fraud**: a criminal using a stolen card. The bank wants to spot those payments automatically so it can block them or text the customer.
+Banks process millions of card payments every day. A tiny number are **fraud**: a criminal using a stolen card. The bank wants to spot them automatically so it can block them or text the customer.
 
 Kaggle gives us:
 
@@ -50,9 +75,9 @@ Kaggle gives us:
 
 For each test transaction we must give a **probability of fraud** between 0 and 1.
 
-> **Explain like I'm 5:** You are a shop security guard. You've watched recordings of 700,000 shoppers and you know which ones were shoplifters. Now 300,000 new shoppers walk in. For each one, you say how suspicious they look, from 0 ("totally fine") to 1 ("definitely a thief").
+> **Explain like I'm 5:** You're a shop security guard. You've watched recordings of 700,000 shoppers and you know which ones were shoplifters. Now 300,000 new shoppers walk in. For each one you say how suspicious they look, from 0 ("totally fine") to 1 ("definitely a thief").
 
-This is a **Playground** competition: the data is *synthetic*, meaning a computer generated it to imitate a real fraud dataset. That keeps real customers' data private, and it also means some "real world" tricks behave a bit differently, as we'll see.
+This is a **Playground** competition: the data is **synthetic** (see C10). It was generated from an original public dataset of 20,000 transactions, "Credit Card Fraud 2026". That dataset's description suggested several analyses (PR-AUC, threshold tuning, comparing SMOTE / class weights / undersampling, feature importance, AI scams, authentication), and we do all of them in sections 14 and 16.
 
 ---
 
@@ -60,78 +85,55 @@ This is a **Playground** competition: the data is *synthetic*, meaning a compute
 
 ![Only 1.67% of transactions are fraud](images/01_imbalance.png)
 
-Only **1.67%** of transactions are fraud, about 1 in 60. This is called an **imbalanced** problem.
+Only **1.67%** of transactions are fraud, about 1 in 60. This is an **imbalanced** problem (C1).
 
-> **Explain like I'm 5:** If you're looking for the one red marble in a jar of 60 marbles, and you just say "every marble is blue", you'll be right 59 times out of 60. You'd score 98%! But you never found the red marble, so you're useless.
+> **Explain like I'm 5:** You're looking for the red marbles in a jar where only 1 in 60 marbles is red. If you just say "every marble is blue", you're right 59 times out of 60, a 98% score! But you never found a red marble, so you're useless.
 
-That is why **accuracy is a bad score here**. A model that always says "not fraud" is 98.3% accurate and catches zero fraud. We need a score that rewards *finding* fraud. That's AUC.
+So **accuracy is a terrible score here**: "never fraud" is 98.3% accurate and catches nothing. We need scores that reward *finding* fraud: ROC AUC (the competition's metric) and PR-AUC (see C2).
 
 ---
 
 ## 3. How we are scored: AUC
 
-The competition says: *"Submissions are evaluated on area under the ROC curve between the predicted probability and the observed target."* That's **AUC** (Area Under the ROC Curve).
-
-### The simple idea: a line-up
+The competition says: *"Submissions are evaluated on area under the ROC curve between the predicted probability and the observed target."*
 
 ![AUC as a line-up](images/06_auc_lineup.png)
 
-Sort all transactions from most suspicious to least suspicious using your model's scores. A perfect model puts **every** fraud before **every** normal transaction.
-
-**AUC = the chance that, if you pick one random fraud and one random normal transaction, the model gave the fraud the higher score.**
-
-| AUC | Meaning |
-|---|---|
-| 1.0 | Perfect line-up: all frauds first |
-| 0.95 | Very good: 95% of fraud/normal pairs ranked correctly |
-| 0.5 | Useless: same as shuffling randomly |
-
-> **Explain like I'm 5:** The teacher lines up all the kids from "most likely ate the cookie" to "least likely". AUC asks: if I pick one cookie-eater and one innocent kid, how often is the cookie-eater standing closer to the front?
-
-**Two important consequences:**
-
-1. Only the **order** matters, not the exact numbers. Predicting 0.9 vs 0.6 for a fraud doesn't matter as long as it's above the normal ones. We'll use this trick in v7.
-2. That's why Kaggle wants **probabilities**, not 0/1 answers. With only 0/1 you can't make a fine-grained line-up.
-
-### The ROC curve
-
-The "curve" in the name plots, for every possible cut-off, how much fraud you catch vs. how many false alarms you raise. AUC is the area under it. Bigger area = better.
-
-![ROC curves](images/07_roc_curves.png)
+Sort every transaction from most to least suspicious. **AUC is the chance that a randomly picked fraud is ranked above a randomly picked normal transaction.** 1.0 = perfect, 0.5 = random shuffling. Only the **order** matters, not the exact numbers. Full details in C2.
 
 ---
 
 ## 4. Setting up
 
-**Option A: Kaggle Notebook** (no install): open the competition, click **Code → New Notebook**. Data is at `/kaggle/input/playground-series-s6e11/`.
+**Option A: Kaggle Notebook** (no install): on the competition page click **Code → New Notebook**. The data is at `/kaggle/input/playground-series-s6e11/`.
 
 **Option B: your own computer:**
 
 ```bash
-python -m pip install pandas scikit-learn lightgbm xgboost catboost matplotlib
+python -m pip install pandas scikit-learn lightgbm xgboost catboost imbalanced-learn matplotlib
 ```
 
-Download the data from the competition's **Data** tab (you must click **Join Competition** first) and unzip into:
+Click **Join Competition** on Kaggle, download the data from the **Data** tab, and unzip:
 
 ```
 Predicting Credit Card Fraud/
-├── data/            train.csv, test.csv, sample_submission.csv
-├── common.py        shared code: loading, features, cross-validation
-├── v1_logistic_regression.py
-├── v2_lightgbm.py
-├── ... v7_ensemble.py
-├── oof/             saved predictions (created when you run the scripts)
-├── submissions/     files to upload to Kaggle
-└── results.csv      the CV score of every version
+├── data/                     train.csv, test.csv, sample_submission.csv
+├── common.py                 shared code: loading, features, cross-validation
+├── v1_logistic_regression.py ... v8_imbalance.py   one script per version
+├── tune_lightgbm.py          the settings search behind v4
+├── analysis.py               feature importance, thresholds, AI scams, authentication
+├── oof/                      saved predictions (created when scripts run)
+├── submissions/              files to upload to Kaggle
+└── results.csv               CV score of every version
 ```
 
-Run each version with `python v1_logistic_regression.py`, etc. (from inside the folder).
+Run scripts from inside the folder: `python v1_logistic_regression.py`. Run v1 to v6 before v7 (the ensemble reuses their predictions).
 
 ---
 
 ## 5. Looking at the data
 
-Each row is one card payment with 24 clues:
+Each row is one card payment with 24 clues (**features**, C1):
 
 | Type | Columns |
 |---|---|
@@ -139,48 +141,36 @@ Each row is one card payment with 24 clues:
 | **Categories** (5) | `merchant_category` (Groceries, Gift Cards...), `card_type`, `auth_method` (PIN, OTP, No Authentication...), `channel`, `device_type` |
 | **Yes/No flags** (6) | `is_foreign_transaction`, `is_new_merchant`, `used_vpn`, `ip_country_mismatch`, `billing_shipping_mismatch`, `is_ai_generated_scam_attempt` |
 
-Good news: **no missing values**, so no gap-filling needed.
-
-### The red flags
+No missing values, so no gap-filling needed.
 
 ![Fraud rate when each flag is on vs off](images/03_red_flags.png)
 
-Every yes/no flag is a strong warning sign. When the card is used from an IP address in a different country than the cardholder, fraud jumps from 1.4% to **16.5%**, nearly 12 times higher.
+Every flag is a strong warning sign: an IP-country mismatch raises fraud from 1.4% to **16.5%**.
 
-### Categories
+![Fraud rate by authentication and merchant type](images/04_categories.png)
 
-![Fraud rate by authentication method and merchant type](images/04_categories.png)
-
-- **No Authentication** (no PIN, no code) → 6.4% fraud. **Biometric** (fingerprint/face) → only 0.5%.
-- **Gift cards, crypto exchanges and gaming** are fraudsters' favourites (5.5% to 7.3%), because they're easy to turn into cash.
-
-### Numbers
+**No Authentication** → 6.4% fraud, **Biometric** → 0.5%. **Gift cards, crypto exchanges and gaming** are fraudsters' favourites, because they're easy to turn into cash.
 
 ![How useful is each number on its own](images/05_single_feature_auc.png)
 
-We can compute an AUC for each number alone. `merchant_risk_score`, `velocity_score` (how fast the card is being used) and `cvv_retry_count` (how many times the 3-digit code was typed wrong) are the strongest. `time_of_day_hour` is basically useless on its own (0.500).
+`merchant_risk_score`, `velocity_score` and `cvv_retry_count` are the strongest single numbers. `time_of_day_hour` tells us nothing on its own.
 
 > **Explain like I'm 5:** A detective lists clues. "The thief typed the secret code wrong 3 times" is a great clue. "It happened on a Tuesday" isn't a clue at all.
 
 ---
 
-## 6. How we test every version fairly (cross-validation)
+# Part B: The journey
 
-We'll build 7 versions. To know whether a new version is *really* better, every version is tested in **exactly the same way**:
+## 6. How we test every version fairly
 
-1. Split the 699,960 training rows into **5 folds** (groups), keeping the same 1.67% fraud rate in each (*stratified*).
-2. Train on 4 folds, predict the 5th. Repeat 5 times so every row gets a prediction from a model that never saw it. These are **out-of-fold (OOF)** predictions.
-3. Compute the AUC of all OOF predictions = the **CV AUC**.
-4. For the test set, average the 5 fold-models' predictions.
+Every version is scored with exactly the same **5-fold stratified cross-validation** (C4), using the same folds (`random_state=42`). The shared function `run_cv()` in `common.py`:
 
-> **Explain like I'm 5:** Five practice exams. Each time you study four chapters and get quizzed on the fifth. Your real grade is your average across all five quizzes. And every version of you takes the *same five quizzes*, so the comparison is fair.
-
-All of this lives in one function in `common.py`, `run_cv()`, so every version uses identical folds (`random_state=42`):
+1. splits the training rows into 5 folds with the same 1.67% fraud rate in each;
+2. trains on 4 folds and predicts the 5th, five times over, so every row gets an **out-of-fold (OOF)** prediction from a model that never saw it;
+3. reports the **CV AUC** of all OOF predictions;
+4. averages the 5 fold-models' predictions on the test set for the submission.
 
 ```python
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import roc_auc_score
-
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 oof = np.zeros(len(X))
 for train_idx, valid_idx in skf.split(X, y):
@@ -189,12 +179,9 @@ for train_idx, valid_idx in skf.split(X, y):
 print("CV AUC:", roc_auc_score(y, oof))
 ```
 
-**How do we know an improvement is real?** Two checks:
+**Is an improvement real?** Fold AUCs vary by about ±0.003 (the noise). But because every version uses the *same* folds, we can compare them fold by fold. **A version that wins in all 5 folds is genuinely better**, even when the gain is small.
 
-- Is the gain bigger than the **noise**? Fold AUCs vary by about ±0.003.
-- Does the new version win **in every fold**? Because all versions use the same folds, a version that wins 5 out of 5 is genuinely better, even if the gain is small.
-
-![The seven versions](images/02_iterations.png)
+![The versions](images/02_iterations.png)
 
 ---
 
@@ -202,29 +189,23 @@ print("CV AUC:", roc_auc_score(y, oof))
 
 **File:** `v1_logistic_regression.py` | **CV AUC: 0.94187**
 
-Always start with something simple. It tells you what "good" looks like and catches bugs early.
+**What:** a **logistic regression** (C5). It gives each clue a weight, adds them up, and squashes the total into a probability with the **sigmoid** curve.
 
-**Logistic regression** gives each clue a weight (points), adds them up, and squashes the total into a probability between 0 and 1.
+![The sigmoid](images/18_sigmoid.png)
 
-> **Explain like I'm 5:** A scorecard. "Foreign transaction: +2 points. Fingerprint used: -3 points. Gift card shop: +1 point." Add up the points. Lots of points = suspicious.
+**Why start here:** always start simple (a **baseline**). It shows what "good" looks like, it's fast (11 seconds), and it catches bugs early.
 
-It needs two preparation steps:
-
-- **One-hot encoding** turns each category into 0/1 columns ("Gift Cards" → `merchant_category_Gift Cards = 1`).
-- **Standard scaling** puts every number on a similar scale. Otherwise `account_balance_usd` (up to 99,701) would drown out `cvv_retry_count` (0 to 3).
+**Preparation it needs:** **one-hot encoding** for the categories and **standard scaling** for the numbers (C3).
 
 ```python
-from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LogisticRegression
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-
 pre = ColumnTransformer([("num", StandardScaler(), NUMS + FLAGS),
                          ("cat", OneHotEncoder(handle_unknown="ignore"), CATS)])
 model = make_pipeline(pre, LogisticRegression(max_iter=2000))
 ```
 
-**Result: 0.94187.** Already very good! The red flags are so strong that a simple points system works well. Its limitation: it can only *add* clues. It can't learn "this flag matters a lot *only when* the amount is large".
+**Result: 0.94187.** Already very good: the red flags are so strong that a simple points system works well.
+
+**Its limit:** it can only *add up* clues. It can't learn "this flag matters a lot *only when* the merchant is risky", or "velocity is dangerous only above 40".
 
 ---
 
@@ -232,69 +213,54 @@ model = make_pipeline(pre, LogisticRegression(max_iter=2000))
 
 **File:** `v2_lightgbm.py` | **CV AUC: 0.94519** | **vs v1: +0.0034, better in 5/5 folds ✅**
 
-### What changed
+**What changed:** we switched from a scorecard to **gradient-boosted decision trees** with the **LightGBM** library (C5).
 
-We switched from a scorecard to **gradient-boosted decision trees**, using the LightGBM library.
+A **decision tree** asks yes/no questions. Here is a real two-level tree learned from our data:
 
-A **decision tree** asks yes/no questions ("Is there an IP mismatch?" → "Is the amount over $200?" → ...) until it reaches an answer. **Boosting** builds many small trees *one after another*, where each new tree focuses on the mistakes the previous trees made. The final score is the sum of all the trees.
+![A real decision tree](images/20_decision_tree.png)
+
+If nobody mistyped the CVV *and* there's no IP mismatch, fraud is only 0.8%. If the CVV was mistyped *and* the merchant is risky, it's **22.7%**. That's a *combination* of clues, which logistic regression can't express.
+
+**Gradient boosting** builds hundreds of small trees one after another, each fixing the mistakes of the ones before.
 
 ![How boosting works](images/08_boosting.png)
 
-> **Explain like I'm 5:** The first student answers the quiz and gets some wrong. The second student only studies the questions the first one got wrong. The third studies what's *still* wrong. Put all their answers together and the team gets almost everything right.
-
-### Why it should be better
-
-Trees can learn **combinations** ("no authentication AND gift card AND foreign = very suspicious") and **thresholds** ("velocity above 40 is dangerous, below is fine"). The scorecard can't.
-
-Bonus: trees don't need scaling or one-hot encoding. LightGBM reads text categories directly if we mark them as `category` type.
+**Why it should be better:** trees learn **combinations** and **thresholds** automatically. They also need no scaling, and LightGBM reads text categories directly when marked as `category` type.
 
 ```python
-import lightgbm as lgb
-
 model = lgb.LGBMClassifier(objective="binary", learning_rate=0.05, n_estimators=5000, num_leaves=31)
 model.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], eval_metric="auc",
           callbacks=[lgb.early_stopping(200)])
 ```
 
-**Early stopping:** we allow up to 5,000 trees but stop when the AUC on the validation fold hasn't improved for 200 trees. Here it stopped at only about 200 to 400 trees. Remember this: it's a clue for v4.
+**Early stopping** (C6) stopped training after only ~200 to 400 trees. Remember this: it's the clue for v4.
 
-### Did it work?
-
-**Yes: 0.94187 → 0.94519**, and it won in all 5 folds. Learning combinations of clues helps.
+**Did it work? Yes:** 0.94187 → 0.94519, winning all 5 folds.
 
 ---
 
 ## 9. v3: Adding new features
 
-**File:** `v3_lightgbm_features.py` | **CV AUC: 0.94522** | **vs v2: +0.0001, better in 3/5 folds ❌ (no real gain)**
+**File:** `v3_lightgbm_features.py` | **CV AUC: 0.94522** | **vs v2: +0.0000, better in 3/5 folds ❌**
 
-### What changed
-
-Same model as v2, plus 13 hand-made clues (**feature engineering**), in `common.engineered_features()`:
+**What changed:** same model, plus 13 hand-made clues (**feature engineering**, C3):
 
 | New clue | Idea |
 |---|---|
 | `flag_count` | How many red flags at once |
 | `amount_to_balance` | Spending a big share of the balance? |
 | `amount_vs_category` | Unusually big for this type of shop? |
-| `is_night` | Between midnight and 6 am |
+| `is_night` | Midnight to 6 am |
 | `risk_x_velocity` | Risky shop AND card used rapidly |
-| `no_auth`, `weak_auth_risky` | No authentication, combined with flags |
-| `txn_per_hour` | Burst of transactions |
-| `*_freq` (4 columns) | How common is this exact value? (a known trick for synthetic data) |
+| `no_auth`, `weak_auth_risky` | No authentication, alone and combined with flags |
+| `txn_per_hour` | A velocity feature: transactions in 24h ÷ hours since the last one |
+| `*_freq` (4 columns) | **Frequency encoding**: how common is this exact value? |
 
-> **Explain like I'm 5:** Instead of giving the detective raw facts, we hand them ready-made hints: "this person had 3 red flags at once".
+**Did it work? No.** The change was 0.00003, and it won only 3 of 5 folds (a coin flip).
 
-### Did it work?
+**Why not?** Trees already build these combinations themselves (`flag_count` is just "flag A and flag B..."), and in this synthetic data the signal sits in the individual columns.
 
-**No.** 0.94519 → 0.94522 is a change of 0.00003, far smaller than the noise, and it won only 3 of 5 folds (a coin flip).
-
-### Why not?
-
-- **Trees already find these combinations themselves.** `flag_count` is just "flag A and flag B and...", which trees learn naturally.
-- In this synthetic data, the signal is mostly in the individual columns, not in ratios between them.
-
-**Lesson:** a feature that *sounds* smart isn't automatically useful. **Always measure.** Because v3 added complexity without gain, **we dropped these features** and went back to the raw 24 columns for v4 onwards. Throwing away work that didn't help is a normal and important part of data science.
+**Lesson:** a feature that *sounds* smart isn't automatically useful. **Measure it.** We **dropped** these features and went back to the raw 24 columns.
 
 ---
 
@@ -302,93 +268,60 @@ Same model as v2, plus 13 hand-made clues (**feature engineering**), in `common.
 
 **File:** `v4_lightgbm_tuned.py` | **CV AUC: 0.94737** | **vs v2: +0.0022, better in 5/5 folds ✅**
 
-### The clue from v2
-
-v2 stopped after only ~300 trees. That means after 300 trees, the model started **memorising** the training data (**overfitting**) and got *worse* on unseen data. The picture below shows it clearly:
+**The clue from v2:** it stopped after ~300 trees because it started **overfitting** (C6), memorising the training data and getting worse on new data:
 
 ![Learning curves of v2 vs v4](images/09_learning_curves.png)
 
-The orange line (v2) shoots up fast, peaks at about 300 trees, then **falls**. The blue line (v4) climbs slowly but keeps going higher.
+The orange line (v2) peaks early and then falls. The blue line (v4) climbs slowly but goes higher.
 
-> **Explain like I'm 5:** One student crams the night before: learns fast, but mixes things up and forgets. Another studies a little every day: slower, but understands it better and scores higher in the end.
-
-### What changed (the settings, called *hyperparameters*)
+**What changed:** the **hyperparameters** (C6), all in the direction of **regularisation**, meaning "don't trust any single pattern too much":
 
 | Setting | v2 | v4 | Why |
 |---|---|---|---|
-| `learning_rate` | 0.05 | **0.02** | Each tree makes a smaller correction, so the model learns more carefully |
-| `max_depth` | unlimited | **4** | Smaller trees can only learn simpler rules, so less memorising |
-| `min_child_samples` | 20 | **300** | A rule must apply to at least 300 transactions, so no rules for weird one-offs |
-| `colsample_bytree` | 1.0 | **0.4** | Each tree sees a random 40% of the clues, so it can't over-rely on one |
+| `learning_rate` | 0.05 | **0.02** | Smaller correction per tree, so more careful learning |
+| `max_depth` | unlimited | **4** | Smaller trees, simpler rules |
+| `min_child_samples` | 20 | **300** | A rule must cover at least 300 transactions |
+| `colsample_bytree` | 1.0 | **0.4** | Each tree sees a random 40% of the columns |
 | `subsample` | 1.0 | **0.7** | Each tree sees a random 70% of the rows |
-| `reg_lambda` | 0 | **10** | Penalises extreme predictions |
+| `reg_lambda` | 0 | **10** | L2 penalty on extreme leaf values |
 | `cat_smooth` | 10 | **50** | Smoother handling of rare categories |
 
-These all push in the same direction: **regularisation**, meaning "don't trust any single pattern too much".
+We tested three settings in `tune_lightgbm.py`. All scored about 0.9473, and the depth-limited one was best.
 
-We picked these by trying three settings in `tune_lightgbm.py` (results in `tune_lightgbm_results.txt`). All three scored about 0.9473, with the depth-limited one slightly ahead.
-
-```python
-PARAMS = dict(objective="binary", n_estimators=10000, learning_rate=0.02, max_depth=4,
-              min_child_samples=300, colsample_bytree=0.4, subsample=0.7, subsample_freq=1,
-              reg_lambda=10, cat_smooth=50)
-```
-
-### Did it work?
-
-**Yes: 0.94519 → 0.94737** (+0.0022), winning **all 5 folds**. This was the second-biggest jump of the project. It now uses ~2,000 trees instead of ~300, and each one is small and careful.
+**Did it work? Yes:** 0.94519 → 0.94737, winning all 5 folds. It now uses ~2,000 small, careful trees instead of ~300 big ones.
 
 ---
 
 ## 11. v5: XGBoost
 
-**File:** `v5_xgboost.py` | **CV AUC: 0.94712** | **vs v4: -0.0002, better in 0/5 folds ❌ (but useful later)**
+**File:** `v5_xgboost.py` | **CV AUC: 0.94712** | **vs v4: -0.0002, better in 0/5 folds ❌ (but useful in v7)**
 
-### What changed
+**What changed:** **XGBoost** (C5), another boosting library. It grows trees level by level instead of leaf by leaf, and handles categories differently. Same "slow and steady" settings.
 
-**XGBoost** is another gradient-boosting library, the one that made boosting famous. Same idea as LightGBM, but it grows trees differently (level by level instead of leaf by leaf) and handles categories differently. We gave it the same "slow and steady" settings.
-
-> **Explain like I'm 5:** Another student who learned from a different teacher. They know the same subject but think about some questions a bit differently.
-
-### Did it work?
-
-On its own, **slightly worse** (0.94712 vs 0.94737, lost all 5 folds by a hair). So why keep it? Because **a different model makes slightly different mistakes**, and that's exactly what an ensemble needs (v7).
+**Did it work?** Slightly worse on its own. We kept it anyway because **a different model makes different mistakes**, and an ensemble needs exactly that.
 
 ---
 
 ## 12. v6: CatBoost
 
-**File:** `v6_catboost.py` | **CV AUC: 0.94619** | **vs v4: -0.0012, better in 0/5 folds ❌ (but useful later)**
+**File:** `v6_catboost.py` | **CV AUC: 0.94619** | **vs v4: -0.0012, better in 0/5 folds ❌ (but useful in v7)**
 
-### What changed
+**What changed:** **CatBoost** (C5), a booster designed for categories. It uses **ordered target statistics** and **symmetric trees**.
 
-**CatBoost** ("Categorical Boosting") is a third boosting library. It was designed specifically for category columns: it replaces each category with a carefully computed fraud rate, in a way that avoids peeking at the answers. It also builds **symmetric** trees (every branch at the same level asks the same question), which makes them very stable.
-
-### Did it work?
-
-Weaker on its own (0.94619), and much slower (29 minutes vs 3 for LightGBM). Here our categories only have 5 to 12 values each, so CatBoost's special category handling has little to offer. But again it's the most *different* of the three boosters, which makes it valuable for blending.
+**Did it work?** Weaker alone and slow (29 minutes vs 3). Our categories have only 5 to 12 values, so CatBoost's special category handling has little to offer. It is, however, the most *different* of the three boosters.
 
 ---
 
-## 13. v7: Ensemble (blending models)
+## 13. v7: Ensemble
 
-**File:** `v7_ensemble.py` | **CV AUC: 0.94744** | **vs v4: +0.0001, better in 5/5 folds ✅ (small but consistent)**
+**File:** `v7_ensemble.py` | **CV AUC: 0.94744** | **vs v4: +0.0001, better in 5/5 folds ✅**
 
-### What changed
+**What changed:** we combined v4, v5, v6 and v1 into one prediction (an **ensemble**, C9):
 
-We combine the predictions of v4, v5, v6 and v1 into one.
-
-> **Explain like I'm 5:** Ask four doctors instead of one. Each one is sometimes wrong, but rarely all in the same way. If you combine their opinions, you make fewer mistakes.
-
-### Step 1: turn probabilities into ranks
-
-Different models output probabilities on different scales. CatBoost might say 0.30 where LightGBM says 0.91 for the same transaction. Averaging raw numbers would let the "louder" model dominate. Since AUC only cares about **order**, we convert each model's predictions into **ranks** between 0 and 1 first, then average:
+1. **Rank** each model's predictions (scaled to 0..1), because the models' probabilities are on different scales and AUC only cares about order.
+2. **Search for the best weights** on the OOF predictions with `scipy.optimize.minimize`.
 
 ![Rank averaging](images/11_rank_average.png)
-
-### Step 2: find the best weights
-
-Instead of a plain average, we let the computer search for the weights that give the highest AUC on the out-of-fold predictions (`scipy.optimize.minimize`). It chose:
 
 | Model | Weight |
 |---|---|
@@ -397,120 +330,565 @@ Instead of a plain average, we let the computer search for the weights that give
 | v6 CatBoost | 0.12 |
 | v1 Logistic regression | 0.01 |
 
-A plain equal-weight average scored only 0.94702, *worse* than v4 alone, because the weak logistic model got 25% of the vote. Weights matter.
+An *equal* average scored only 0.94702, worse than v4 alone, because the weak model got a quarter of the vote. **Weights matter.**
 
-### Why the gain is small
+**Why the gain is small:**
 
 ![Correlation between model rankings](images/12_model_correlation.png)
 
-The three boosting models rank transactions **98.5% to 99.5% the same**. Blending only helps where models disagree, and these barely disagree. They all learned the same patterns from the same clues.
+The three boosters rank transactions **98.5% to 99.5% the same**. Blending only helps where models disagree.
 
-### Did it work?
-
-**Yes, a little: 0.94737 → 0.94744**, and it won **all 5 folds**, so the gain is real, just small. This is our best model.
+**Did it work? Yes, a little:** +0.00008, but in all 5 folds, so the gain is real. **This is our best model.**
 
 ---
 
-## 14. The whole journey on one page
+## 14. v8: Imbalance techniques (class weights, undersampling, SMOTE)
+
+**File:** `v8_imbalance.py` | results in `v8_imbalance_results.csv`
+
+**The question** (straight from the original dataset's description): *"Compare SMOTE, class weights and undersampling on the same model."* Fraud is only 1.67% of the data. Would the model learn better if we made fraud "louder"?
+
+![Three ways to handle imbalance](images/17_resampling.png)
+
+We tried four techniques (all explained in C7), each on the v4 LightGBM with the same folds:
+
+| Technique | What it does | ROC AUC | PR-AUC |
+|---|---|---|---|
+| **Nothing** (v4) | Train on the data as it is | **0.94737** | **0.5137** |
+| Class weights ×59 | Each fraud counts like 59 normal rows | 0.94641 | 0.5067 |
+| Soft class weights ×7.7 | Each fraud counts like ~8 rows | 0.94728 | 0.5127 |
+| Undersampling 1:10 | Keep all frauds and only 10 normal rows per fraud (5× less data) | 0.94678 | 0.5103 |
+| SMOTE-NC | Invent synthetic frauds until they're 10% of the normals | 0.91607 | 0.3319 |
+
+![v8 results](images/16_imbalance_methods.png)
+
+**Result: none of them beats doing nothing.** Why?
+
+- **AUC only cares about order.** Class weights mostly push *all* probabilities up. The ranking barely changes, so AUC can't improve, and the extra weight makes the model a bit noisier.
+- **We have plenty of fraud.** 11,689 fraud examples is a lot. Imbalance tricks matter most when you have only a few hundred, like the original 20,000-row dataset (339 frauds).
+- **Undersampling throws away information.** It's 5× faster to train and nearly as good, which is useful for quick experiments, but not better.
+- **SMOTE hurts badly here.** It invents frauds by drawing lines between real ones. With many yes/no flags and categories, those in-between points describe transactions that don't really exist, and the model learns from fake patterns.
+
+**A bug we found and fixed (an important lesson):** the first run gave class weights an AUC of only 0.840. The cause: LightGBM's early stopping watches *every* metric by default, including log-loss. With class weights, the plain log-loss on the validation fold gets worse from the very first trees, even while AUC improves, so training stopped almost immediately. The fix was to make AUC the only metric watched (`metric="auc"`). **When a result looks shocking, suspect your setup before believing it.**
+
+**Verdict:** not kept. v7 stays the best model. (For the leaderboard metric, which is AUC, "do nothing" wins.)
+
+---
+
+## 15. The whole journey on one page
 
 ![CV AUC of every version](images/10_iterations_progress.png)
 
 | Version | What changed | CV AUC | vs best before | Kept? |
 |---|---|---|---|---|
-| v1 | Logistic regression (scorecard) | 0.94187 | baseline | baseline |
+| v1 | Logistic regression | 0.94187 | baseline | baseline |
 | v2 | Gradient-boosted trees (LightGBM) | 0.94519 | **+0.0033** (5/5 folds) | ✅ |
-| v3 | + 13 hand-made features | 0.94522 | +0.0000 (3/5 folds) | ❌ dropped |
-| v4 | Regularised: small trees, slow learning | 0.94737 | **+0.0022** (5/5 folds) | ✅ |
-| v5 | XGBoost | 0.94712 | -0.0002 | for blending |
-| v6 | CatBoost | 0.94619 | -0.0012 | for blending |
-| v7 | Weighted rank-blend of v4, v5, v6, v1 | **0.94744** | **+0.0001** (5/5 folds) | ✅ best |
+| v3 | + 13 engineered features | 0.94522 | +0.0000 (3/5) | ❌ |
+| v4 | Regularised LightGBM | 0.94737 | **+0.0022** (5/5) | ✅ |
+| v5 | XGBoost | 0.94712 | -0.0002 | in blend |
+| v6 | CatBoost | 0.94619 | -0.0012 | in blend |
+| v7 | Weighted rank blend | **0.94744** | **+0.0001** (5/5) | ✅ **best** |
+| v8 | Class weights / undersampling / SMOTE | 0.916 to 0.9473 | no gain | ❌ |
 
-### What does 0.947 mean in practice?
+**Three big lessons**
 
-If the bank checks the **top 5%** most suspicious transactions flagged by v7, it catches **71.5%** of all fraud. Checking just the **top 1%** catches 38.9%. (v1 caught 69.9% and 37.7%.)
-
-### The three big lessons
-
-1. **Start simple.** The baseline was already 0.942. Everything after that added only 0.005.
-2. **Measure everything.** Smart-sounding features (v3) did nothing. A boring settings change (v4) was the biggest win after switching models.
-3. **Small, consistent gains are real.** When every version uses the same folds, winning 5 out of 5 folds proves a gain even if it's tiny.
+1. **Start simple.** The baseline was 0.942. Everything after it added 0.005.
+2. **Measure everything.** Smart-sounding features (v3) and popular imbalance tricks (v8) did nothing or hurt. A boring settings change (v4) gave the biggest gain after switching to trees.
+3. **Small, consistent gains are real.** With shared folds, winning 5 out of 5 proves a gain even when it's tiny.
 
 ---
 
-## 15. Submitting to Kaggle
+## 16. Four questions answered with the model
 
-Every script writes a file to `submissions/` in exactly the format Kaggle wants (299,984 rows):
+These come from the original dataset's description. Code: `analysis.py`, numbers in `analysis_results.txt`.
 
-```
-id,is_fraud
-699960,0.0123
-699961,0.0087
-...
-```
+### Q1. Which signals catch the most fraud?
 
-**Upload order:** `v7_ensemble.csv` first (best CV), then `v4_lightgbm_tuned.csv` to compare.
+![Feature importance](images/13_feature_importance.png)
 
-Go to the competition page → **Submit Prediction** → upload the file → add a short description:
+Two ways of measuring importance (C8) agree on the **top 3: `merchant_risk_score`, `velocity_score` and `cvv_retry_count`**, followed by `auth_method`. Shuffling `merchant_risk_score` costs the model **0.052 AUC**. Shuffling `day_of_week`, `distance_from_home_km` or `time_of_day_hour` costs nothing: the model ignores them.
+
+> **Explain like I'm 5:** To find out which clue a detective needs most, hide one clue at a time and see how much worse they get. Hiding "the shop is dodgy" hurts a lot. Hiding "what day it was" doesn't hurt at all.
+
+### Q2. Precision, recall and threshold tuning: how much recall can you buy per false alarm?
+
+A bank can't call every customer, so it must choose a **threshold** (C2): flag everything above a certain suspicion score.
+
+![Precision-recall curve and recall per false alarm](images/14_precision_recall.png)
+
+| Flag the top... | Recall (fraud caught) | Precision (alarms that are real) | False alarms per fraud caught |
+|---|---|---|---|
+| 0.5% | 24.9% | 83.2% | 0.2 |
+| 1% | 38.9% | 65.0% | 0.5 |
+| 2% | 54.0% | 45.1% | 1.2 |
+| 5% | 71.5% | 23.9% | 3.2 |
+| 10% | 83.1% | 13.9% | 6.2 |
+| 20% | 91.7% | 7.7% | 12.1 |
+
+Catching the first quarter of fraud is almost free (1 false alarm per 5 catches). Catching 90% costs 12 false alarms per catch. The **best F1** point flags about the top 1.5%: precision 54%, recall 47%.
+
+Here is the confusion matrix when flagging the top 2%:
+
+![Confusion matrix](images/19_confusion_matrix.png)
+
+**PR-AUC = 0.514**, against 0.017 for random guessing (30× better). The dataset's author recommends PR-AUC because it focuses on the rare fraud class. Our ROC AUC of 0.947 sounds near-perfect, but PR-AUC reminds us that at most thresholds a large share of alarms are still false.
+
+### Q3. Are AI-generated scam attempts harder to catch?
+
+**No, they're easier.** 93.1% of AI-scam frauds land in the model's top 5% most suspicious, against 70.8% of other frauds. AI-scam attempts are fraud 15.2% of the time (vs 1.6% for everything else), and they tend to come with other red flags, so they stand out.
+
+### Q4. Does strong authentication actually suppress fraud?
+
+![Authentication and fraud](images/15_authentication.png)
+
+**Yes.** Biometric (0.5%) < PIN (0.9%) < OTP (1.4%) ≈ 3D Secure (1.5%) < **No Authentication (6.4%)**. The ordering holds **even among transactions that already have a location or address red flag** (4.0% with biometrics vs 35.4% with no authentication), so it's not just that safer customers use biometrics. Strong authentication works. (In synthetic data this reflects how the data was generated, but the lesson matches the real world.)
+
+---
+
+## 17. Submitting to Kaggle
+
+Every script writes `submissions/<version>.csv` in the required format (299,984 rows, columns `id,is_fraud`).
+
+Upload **`v7_ensemble.csv`** first (best CV), then `v4_lightgbm_tuned.csv` to compare. Short descriptions:
 
 - v7: *"Weighted rank blend LGBM+XGB+CatBoost (CV AUC 0.94744)"*
-- v4: *"Regularised LightGBM, raw features (CV AUC 0.94737)"*
+- v4: *"Regularised LightGBM (CV AUC 0.94737)"*
 
-**Public vs private leaderboard:** in Playground competitions the public leaderboard uses only about 20% of the test set. The final ranking uses the other 80%. Trust your CV score more than small public-leaderboard differences.
+The public leaderboard scores only part of the test set (C10), so trust CV over small leaderboard differences.
 
 ---
 
-## 16. Common mistakes and how to fix them
+# Part C: Terms and techniques
+
+Each entry has: **Explain like I'm 5** → **what it is / how it works** → **why we used it** → **key settings or pitfalls**.
+
+## C1. The problem
+
+### Feature
+> **Explain like I'm 5:** A clue. "The card was used abroad" is a clue.
+
+A **feature** is one input column the model uses to make its guess. Here there are 24 (amount, velocity score, flags...). By convention all the features together are called **`X`**.
+
+### Target (label)
+> **Explain like I'm 5:** The answer on the back of the card: "fraud" or "not fraud".
+
+The column we want to predict, `is_fraud`. Called **`y`**. In training data we know it; in test data it's hidden.
+
+### Binary classification
+> **Explain like I'm 5:** A game with exactly two answers: yes or no.
+
+Predicting one of two classes (fraud = 1, normal = 0). Most models output a **probability** for class 1 rather than a hard yes/no.
+
+### Probability
+> **Explain like I'm 5:** How sure you are. 0.9 means "I'm almost sure it's fraud", 0.1 means "probably fine".
+
+A number between 0 and 1. Kaggle wants probabilities because ROC AUC needs a ranking: with only 0/1 answers, you can't say which of two flagged transactions is *more* suspicious.
+
+### Imbalanced data
+> **Explain like I'm 5:** A jar with 59 blue marbles for every red one.
+
+One class is much rarer than the other (1.67% fraud). Consequences: accuracy becomes misleading, the rare class gives the model fewer examples to learn from, and metrics like PR-AUC and precision/recall become important. Techniques to deal with it are in C7.
+
+---
+
+## C2. Measuring success
+
+### Accuracy (and why it's misleading here)
+> **Explain like I'm 5:** The percentage of answers you got right. But if you say "blue" for every marble, you're 98% right and still never found a red one.
+
+Accuracy = correct predictions ÷ all predictions. With 1.67% fraud, predicting "never fraud" gives 98.3% accuracy. That's useless, which is why we never use accuracy in this project.
+
+### Confusion matrix (TP, FP, FN, TN)
+> **Explain like I'm 5:** A 2×2 box that sorts the guard's decisions: thieves caught, innocent people stopped by mistake, thieves who got away, and innocent people correctly let through.
+
+Once you pick a threshold, every transaction falls into one of four boxes:
+
+| | Model says fraud | Model says OK |
+|---|---|---|
+| **Really fraud** | **True positive (TP)**: caught | **False negative (FN)**: missed |
+| **Really normal** | **False positive (FP)**: false alarm | **True negative (TN)**: correctly ignored |
+
+Every other metric below is built from these four counts. See the real one in section 16.
+
+### Precision
+> **Explain like I'm 5:** Of all the people the guard stopped, how many were really thieves?
+
+Precision = TP ÷ (TP + FP). High precision = few false alarms. Matters when each alarm is expensive (a phone call, an annoyed customer).
+
+### Recall (sensitivity, true positive rate)
+> **Explain like I'm 5:** Of all the thieves in the shop, how many did the guard catch?
+
+Recall = TP ÷ (TP + FN). High recall = little fraud slips through. Matters when missing fraud is expensive.
+
+**Precision and recall pull against each other:** flag more transactions and recall goes up but precision goes down (section 16).
+
+### F1 score
+> **Explain like I'm 5:** One grade that's only high if the guard is good at *both* catching thieves and not stopping innocent people.
+
+F1 = 2 × precision × recall ÷ (precision + recall), the *harmonic mean*. It punishes being bad at either one. We used it to find a balanced threshold.
+
+### Threshold
+> **Explain like I'm 5:** The line on the suspicion meter. Above the line, the guard stops you.
+
+The cut-off that turns a probability into a decision ("flag if score ≥ 0.3"). It doesn't change the model, only how you *use* it. **Threshold tuning** means choosing the cut-off that best fits the business: how many false alarms you can afford per fraud caught. ROC AUC and PR-AUC summarise the model over **all** thresholds at once, which is why the competition doesn't need you to pick one.
+
+### ROC curve and ROC AUC
+> **Explain like I'm 5:** Line up everyone from "most suspicious" to "least suspicious". AUC asks: if I pick one thief and one innocent person, how often is the thief standing closer to the front?
+
+**How it works:**
+- For every possible threshold, compute the **true positive rate** (recall) and the **false positive rate** (FP ÷ all normals).
+- Plotting one against the other gives the **ROC curve** (Receiver Operating Characteristic, a name from World War II radar). A perfect model hugs the top-left corner; random guessing is the diagonal.
+- The **area under the curve (AUC)** equals the probability that a random fraud gets a higher score than a random normal transaction.
+
+**Key facts:**
+- 1.0 = perfect, 0.5 = random.
+- It depends **only on the order** of the predictions. Multiplying every prediction by 2, or converting predictions to ranks, gives exactly the same AUC. We exploit this in the ensemble.
+- It is **insensitive to imbalance**, which is good for comparing models, but it can look flattering: 0.947 sounds near-perfect even though many alarms are still false.
+
+![ROC curves](images/07_roc_curves.png)
+
+### PR curve and PR-AUC (average precision)
+> **Explain like I'm 5:** Instead of asking about everyone, only ask about the thieves: as the guard tries to catch more of them, how many innocent people does he stop by mistake?
+
+**How it works:** plot **precision** (y) against **recall** (x) for every threshold. The area under it is **PR-AUC**, usually computed as **average precision** (`sklearn.metrics.average_precision_score`).
+
+**Why it matters for fraud:** a random model's PR-AUC equals the fraud rate (0.017), not 0.5. So PR-AUC shows how much better than chance you really are *on the rare class*. Ours is 0.514 (30× better than chance). It's the metric the original dataset's author recommends. ROC AUC is still what Kaggle scores, so we optimise ROC AUC and report PR-AUC alongside.
+
+---
+
+## C3. Preparing data
+
+### One-hot encoding
+> **Explain like I'm 5:** A computer can't read "Gift Cards". So we give each shop type its own light switch: the Gift Cards switch is ON (1), all the others are OFF (0).
+
+Turns a category column with *k* values into *k* columns of 0/1 (`OneHotEncoder` or `pd.get_dummies`). **Why not just number the categories 1, 2, 3?** Because a model like logistic regression would think "Utilities (12)" is twelve times "Crypto (1)", which is meaningless. Used in v1. Tree models don't need it.
+
+### Native categorical handling
+> **Explain like I'm 5:** Some smart models can read the shop names themselves; you just tell them "this column is a list of names".
+
+LightGBM, XGBoost and CatBoost can split directly on category values if the column has pandas `category` type. LightGBM, for example, sorts the categories by their fraud rate and finds the best way to split them into two groups. Faster, and often better than one-hot. Used in v2 to v8.
+
+### Standard scaling
+> **Explain like I'm 5:** One clue is measured in dollars (up to 99,701) and another in "number of wrong codes" (0 to 3). We change both to the same kind of ruler so the big numbers don't shout over the small ones.
+
+Each number becomes (value − mean) ÷ standard deviation, so every column has mean 0 and spread 1 (`StandardScaler`). Needed for logistic regression (and SVMs, neural networks). Trees don't care, because a split like "amount > 200" works the same at any scale.
+
+### Feature engineering
+> **Explain like I'm 5:** Instead of giving the detective raw facts, you hand over ready-made hints: "this person had 3 red flags at once".
+
+Creating new features from existing ones: ratios (`amount_to_balance`), counts (`flag_count`), interactions (`risk_x_velocity`), velocity features (`txn_per_hour`). Often the biggest win in real projects. Here it gave nothing (v3), because trees already found these patterns. **Always measure.**
+
+### Frequency (count) encoding
+> **Explain like I'm 5:** Count how many times each exact value appears. A value that shows up very often or very rarely might be a hint.
+
+Replace a value with how often it occurs in train + test. A known trick for synthetic Playground data, because generators sometimes leave fingerprints in how often values repeat. It didn't help here.
+
+### Target encoding (CatBoost's ordered target statistics)
+> **Explain like I'm 5:** Replace "Gift Cards" with "7% of gift-card payments were fraud". But to be fair, for each row you may only use the rows that came *before* it, so you never peek at your own answer.
+
+Each category is replaced by the fraud rate of that category. Done naively, it **leaks** (C4): a row's own label is included in its own encoding. CatBoost fixes this by processing rows in a random order and using only the rows *before* each one ("ordered" statistics). Used inside v6.
+
+---
+
+## C4. Testing honestly
+
+### Training, validation and test sets
+> **Explain like I'm 5:** Homework (training), a practice exam you mark yourself (validation), and the real exam where you never see the answers (test).
+
+- **Training set:** what the model learns from.
+- **Validation set:** held-out labelled data used to check the model and choose settings.
+- **Test set:** Kaggle's hidden-label data. We only predict it.
+
+Never judge a model on the data it trained on: it may have memorised it.
+
+### K-fold cross-validation
+> **Explain like I'm 5:** Five practice exams. Each time you study four chapters and get quizzed on the fifth. Your grade is the average of all five quizzes.
+
+Split the data into K parts (here K = 5). Train on K−1 parts and validate on the remaining one; repeat K times. Every row is validated exactly once. It's more reliable than a single split because the score is averaged over five different validation sets, and it uses all the data for both training and checking.
+
+### Stratification
+> **Explain like I'm 5:** When you split a bag of sweets into five piles, make sure every pile gets its fair share of the rare red sweets.
+
+`StratifiedKFold` makes every fold have the same 1.67% fraud rate. Without it, one fold might get 1.5% fraud and another 1.9%, making fold scores noisier.
+
+### Out-of-fold (OOF) predictions
+> **Explain like I'm 5:** For every practice question, you write down the answer you gave when that question was on your quiz, never when you'd already studied it.
+
+Each training row's prediction comes from the fold-model that did **not** train on it. OOF predictions give an honest CV score, and they can be used to build ensembles without cheating (v7), because no model ever predicts rows it trained on.
+
+### CV noise and paired comparison
+> **Explain like I'm 5:** If you score 84 on one quiz and 85 on the next, did you really get smarter, or was the second quiz just a bit easier? Compare yourself with a friend on *the same* quizzes to find out.
+
+Fold scores vary by about ±0.003 just from which rows land in which fold. A difference smaller than that might be luck. But if two versions are tested on **identical folds** and one wins on every fold, the win is real (a *paired* comparison). That's how we judged every iteration.
+
+### Data leakage
+> **Explain like I'm 5:** Accidentally seeing the answers before the test. Your score looks amazing, but it's a lie.
+
+Any way information about the validation labels sneaks into training. Examples: target-encoding with a row's own label, resampling (SMOTE) *before* splitting into folds so that synthetic copies of validation frauds end up in training, or choosing features by looking at the whole dataset's labels. Our rule: **anything that uses labels happens inside each fold, on the training part only.** v8 resamples inside each fold for exactly this reason.
+
+### Random seed
+> **Explain like I'm 5:** A magic number that makes the "random" coin flips come out the same every time, so you can repeat your experiment.
+
+`random_state=42` fixes the folds, the row/column sampling and the SMOTE choices, so results are reproducible and versions are compared on the same folds.
+
+---
+
+## C5. The models
+
+### Baseline
+> **Explain like I'm 5:** Your first, simple attempt, so you know what "better" means.
+
+The simplest reasonable model. Every later version must beat it. Ours: logistic regression, AUC 0.94187.
+
+### Logistic regression
+> **Explain like I'm 5:** A scorecard. "Foreign transaction: +2 points. Fingerprint used: −3 points." Add up the points. Lots of points = suspicious.
+
+**How it works:**
+1. Each feature gets a **weight** (coefficient).
+2. The model computes a score: z = bias + w₁·x₁ + w₂·x₂ + ...
+3. The **sigmoid** function, p = 1 ÷ (1 + e^(−z)), squashes z into a probability between 0 and 1 (see the chart in section 7).
+4. Training finds the weights that make the predicted probabilities match the real labels as closely as possible (minimising **log-loss**).
+
+**Key settings:** `C` = inverse regularisation strength (smaller C = weights pushed closer to zero = simpler model). `max_iter` = how long the optimiser may run.
+
+**Strengths:** fast, simple, interpretable (you can read the weights). **Weakness:** it only *adds* effects, so it can't learn "A matters only when B" unless you build that feature yourself.
+
+### Log-loss (binary cross-entropy)
+> **Explain like I'm 5:** A penalty for being confidently wrong. Saying "99% sure it's fine" about a fraud costs you a lot; saying "60% sure" costs a little.
+
+loss = −[y·log(p) + (1−y)·log(1−p)], averaged over rows. It's what most classifiers minimise during training (LightGBM's `objective="binary"`). It's also LightGBM's default validation metric, which caused the early-stopping bug in v8.
+
+### Decision tree
+> **Explain like I'm 5:** The game "20 Questions". "Did they type the code wrong?" Yes. "Is the shop risky?" Yes. "Then I'm suspicious!"
+
+**How it works:**
+1. Start with all rows. Try every feature and every possible split point ("cvv_retry_count ≤ 0.5?").
+2. Pick the split that best separates fraud from normal (measured by how much it reduces log-loss or *Gini impurity*).
+3. Repeat inside each branch until a stopping rule (maximum depth, minimum rows per leaf).
+4. Each final box (**leaf**) predicts the fraud rate of its training rows.
+
+See the real tree in section 8. **Strengths:** learns thresholds and combinations, needs no scaling. **Weakness:** one deep tree overfits easily, so we use many small ones (boosting).
+
+### Gradient boosting
+> **Explain like I'm 5:** The first student answers the quiz and gets some wrong. The second student studies only the questions the first got wrong. The third studies what's *still* wrong. Add all their answers together and the team gets almost everything right.
+
+**How it works:**
+1. Start with a simple guess (the average fraud rate).
+2. Compute how wrong each row is: the **gradient** of the loss, roughly "how much and in which direction should this row's score move?"
+3. Fit a small tree that predicts those corrections.
+4. Add that tree's output to the running score, multiplied by the **learning rate** (e.g. 0.02), so each tree only nudges.
+5. Repeat hundreds or thousands of times.
+
+**Key settings:** `n_estimators` (number of trees), `learning_rate` (size of each nudge), tree size (`max_depth`, `num_leaves`), and the regularisation settings in C6. Lower learning rate + more trees usually = better but slower. Gradient boosting is the most successful method for table-shaped data like this.
+
+### LightGBM
+> **Explain like I'm 5:** A super-fast boosting machine that grows each tree where it's most needed first.
+
+Microsoft's gradient boosting library. Two tricks make it fast:
+- **Histogram binning:** it groups each feature's values into ~255 buckets, so it tries 255 split points instead of millions.
+- **Leaf-wise growth:** it always splits the leaf that reduces the loss most, so trees can be lopsided. That's powerful but can overfit, which is why `num_leaves`, `max_depth` and `min_child_samples` matter.
+
+It handles categories natively. Our main model (v2, v4).
+
+### XGBoost
+> **Explain like I'm 5:** An older, very famous boosting machine that grows its trees one whole level at a time, like building a pyramid floor by floor.
+
+"eXtreme Gradient Boosting" made boosting famous on Kaggle around 2015. It grows trees **level-wise** (depth by depth) by default, uses built-in L1/L2 regularisation, and with `tree_method="hist"` it's also histogram-based. Similar accuracy to LightGBM; different enough to help an ensemble. v5.
+
+### CatBoost
+> **Explain like I'm 5:** A boosting machine that's extra good with name-type clues, and builds very tidy trees where every branch on the same floor asks the same question.
+
+Yandex's boosting library. Its special features:
+- **Ordered target statistics** for categories (C3), which avoids leakage.
+- **Ordered boosting**, which reduces a subtle overfitting problem in standard boosting.
+- **Symmetric (oblivious) trees:** every node at the same depth uses the same split. Very regular, fast to predict, and hard to overfit.
+
+Often the best choice when there are many high-cardinality categories. Here it was weaker and slower. v6.
+
+---
+
+## C6. Controlling training
+
+### Overfitting and underfitting
+> **Explain like I'm 5:** Overfitting is memorising last year's exam answers: perfect on that exam, lost on a new one. Underfitting is not studying at all.
+
+- **Overfitting:** the model learns noise and quirks of the training rows, so it does well on them and worse on new data.
+- **Underfitting:** the model is too simple to capture the real pattern.
+
+The goal is in between. You detect overfitting when the training score keeps improving but the validation score stops or falls (the v2 learning curve in section 10).
+
+### Early stopping
+> **Explain like I'm 5:** Keep practising while your quiz scores improve. When they stop improving for a while, stop, before you start "over-practising".
+
+Train with many trees (e.g. 10,000), check the validation score after each one, and stop when it hasn't improved for N rounds (`early_stopping(300)`), keeping the best number of trees.
+
+**Pitfall we hit in v8:** LightGBM watches *all* metrics by default. If any of them (here, log-loss) stops improving, training stops, even if AUC is still climbing. Set `metric="auc"` so only the metric you care about decides.
+
+**Note:** early stopping uses the validation fold to choose the tree count, which makes CV scores very slightly optimistic. With 140,000 rows per fold the effect is tiny, and the comparison between versions stays fair because all of them do it.
+
+### Hyperparameters and tuning
+> **Explain like I'm 5:** The knobs on the machine you set *before* it starts learning, like the oven temperature before baking.
+
+**Parameters** are learned (tree splits, logistic weights). **Hyperparameters** are chosen by you (learning rate, depth...). **Tuning** means trying different values and keeping the best by CV score. We did a small manual search (`tune_lightgbm.py`). Tools like Optuna automate it.
+
+### Regularisation
+> **Explain like I'm 5:** Rules that stop the model from getting too clever and memorising. Like a teacher saying "explain it simply, in your own words".
+
+Any technique that limits model complexity to reduce overfitting. The ones we used in v4:
+
+| Setting | ELI5 | What it does |
+|---|---|---|
+| `learning_rate` 0.02 | Take small steps | Each tree's contribution is scaled down, so no single tree dominates |
+| `max_depth` 4 | Ask at most 4 questions | Shallow trees can only learn simple rules |
+| `num_leaves` | Number of final boxes | Caps tree size (LightGBM grows leaf-wise) |
+| `min_child_samples` 300 | A rule must apply to many people | A leaf needs ≥ 300 rows, so no rules for rare flukes |
+| `subsample` 0.7 | Study a random 70% of the pages each time | Each tree sees a random sample of rows (*bagging*), so trees are less alike |
+| `colsample_bytree` 0.4 | Only look at some clues each time | Each tree sees 40% of the columns, so it can't over-rely on one |
+| `reg_lambda` 10 (L2) | Don't shout | Penalises large leaf values, which shrinks extreme predictions |
+| `cat_smooth` 50 | Don't trust tiny groups | Blends rare categories' fraud rates towards the average |
+| `C` (logistic) | Keep the points small | Penalises large weights |
+
+---
+
+## C7. Handling imbalance
+
+None of these helped AUC here (v8), but they're essential tools to know.
+
+### Class weights (`scale_pos_weight`, `class_weight`)
+> **Explain like I'm 5:** The teacher says "getting a fraud question wrong costs you 59 points, a normal question only 1 point". So you pay much more attention to fraud questions.
+
+During training, each fraud row's error is multiplied by a weight (e.g. 59 ≈ normal ÷ fraud count). The model works harder to get frauds right. **Effect:** predicted probabilities shift upwards (no longer true probabilities), and recall at a 0.5 threshold improves. **AUC often doesn't change much**, because the *order* stays similar. A softer weight (√59 ≈ 7.7) is a common compromise.
+
+### Undersampling
+> **Explain like I'm 5:** There are too many normal marbles, so you put most of them back in the box and practise with all the red ones plus a handful of blue.
+
+Randomly drop majority-class rows from training (here: 10 normal per fraud, about 5× less data). **Pros:** much faster training, balanced classes. **Cons:** throws away information. Done **only on the training folds**, never on validation.
+
+### Oversampling
+> **Explain like I'm 5:** Photocopy the red marbles so there are more of them.
+
+Duplicate minority rows. Simple, but the model may memorise the copies.
+
+### SMOTE (and SMOTE-NC)
+> **Explain like I'm 5:** Instead of photocopying a red marble, you invent a new one halfway between two real red marbles.
+
+**Synthetic Minority Over-sampling TEchnique:**
+1. For a fraud row, find its *k* nearest fraud neighbours (k = 5).
+2. Pick one and create a new point somewhere on the line between them.
+3. Repeat until frauds reach the target share (10% of normals here).
+
+**SMOTE-NC** handles categorical columns: a synthetic row takes the most common category among the neighbours instead of averaging. **Pitfalls:** with many flags and categories, "in-between" points can describe impossible transactions, and the model learns fake patterns (our AUC fell to 0.916). Always apply it **inside each training fold**: applying it before splitting leaks synthetic copies of validation frauds into training.
+
+---
+
+## C8. Understanding a model
+
+### Feature importance (gain)
+> **Explain like I'm 5:** Count how much each clue helped the detective narrow things down, every time they used it.
+
+For tree models: add up, for every split using a feature, how much that split reduced the loss. Fast and built in (`booster.feature_importance("gain")`). **Pitfall:** it can over-credit features with many distinct values, and it says nothing about direction (does a high value mean more or less fraud?).
+
+### Permutation importance
+> **Explain like I'm 5:** Hide one clue by scrambling it, and see how much worse the detective gets.
+
+Shuffle one column in the validation data (breaking its link with the target), re-score the model, and measure the drop in AUC. Repeat for each column (`sklearn.inspection.permutation_importance`). It's slower but more trustworthy than gain, because it measures real impact on the metric you care about. In our data, shuffling `merchant_risk_score` drops AUC by 0.052.
+
+---
+
+## C9. Combining models
+
+### Ensemble
+> **Explain like I'm 5:** Ask four doctors instead of one. Each is sometimes wrong, but rarely all in the same way.
+
+Combine the predictions of several models. It works when the models are **good** and **different** (they make different mistakes). Common forms: averaging, weighted averaging, rank averaging, and **stacking** (training a small model on the other models' predictions).
+
+### Rank averaging
+> **Explain like I'm 5:** One teacher marks out of 10 and another out of 100. Before combining their marks, convert both into "position in class" so they're fair.
+
+Replace each model's predictions with their rank (scaled to 0..1), then average. Since AUC depends only on order, ranks lose nothing, and they stop a model with "louder" probabilities from dominating. Used in v7.
+
+### Weight optimisation
+> **Explain like I'm 5:** Try giving each doctor a different amount of say, and keep the mix that would have been right most often on past patients.
+
+We let `scipy.optimize.minimize` (the Nelder-Mead method, which tries weight combinations without needing derivatives) find the weights that maximise AUC on the **OOF** predictions. Using OOF predictions keeps it honest, because no model is scored on rows it trained on. With only 4 weights and 700,000 rows, the risk of overfitting the weights is tiny.
+
+### Correlation between models (Spearman)
+> **Explain like I'm 5:** If two doctors always say exactly the same thing, asking both is no better than asking one.
+
+Spearman correlation measures how similar two models' **rankings** are (1.0 = identical order). Our boosters are 0.985 to 0.995 correlated, which explains the tiny ensemble gain. To gain more, add models that think differently (e.g. neural networks).
+
+---
+
+## C10. Kaggle-specific
+
+### Public vs private leaderboard
+> **Explain like I'm 5:** The teacher shows you your mark on 20% of the exam now, but your final grade uses the other 80%.
+
+Kaggle scores your submission on part of the test set for the **public** leaderboard and on the rest for the **private** leaderboard, which decides the final ranking. Tuning to the public score can mislead you (*overfitting the leaderboard*). Trust your CV.
+
+### Synthetic data
+> **Explain like I'm 5:** Pretend data made by a computer to look like the real thing, so no real person's secrets are shared.
+
+Playground datasets are generated by a model trained on an original dataset (here the 20,000-row "Credit Card Fraud 2026", itself generated with NumPy). Patterns are similar but not identical, and sometimes generator "fingerprints" (like value frequencies) carry signal. Adding the original data to training is a common Playground trick.
+
+---
+
+# Extras
+
+## 18. Common mistakes and how to fix them
 
 | Problem | Cause | Fix |
 |---|---|---|
-| Score looks great with **accuracy** | Imbalanced data: "never fraud" gets 98% | Use AUC (the competition metric) |
-| Submitting 0/1 labels | `model.predict()` instead of probabilities | Use `model.predict_proba(X)[:, 1]` |
-| `could not convert string to float` | Text columns given to a model that needs numbers | Mark as `category` for LightGBM/XGBoost, or one-hot encode for logistic regression |
-| Different scores every run | No fixed random seed | Set `random_state=42` everywhere, including the folds |
-| CV says better, leaderboard says worse | Normal noise on a small public sample | Trust CV. Only trust gains that win in every fold |
-| Training takes forever | CatBoost on 700k rows, or tiny learning rate | Start with LightGBM; use early stopping |
-| Comparing versions on different folds | Unfair comparison | Use one shared CV function with a fixed seed (`common.run_cv`) |
+| Score looks great with accuracy | Imbalanced data | Use ROC AUC / PR-AUC |
+| Submitting 0/1 labels | `model.predict()` | `model.predict_proba(X)[:, 1]` |
+| `could not convert string to float` | Text columns in a numeric model | `category` dtype for boosters, one-hot for logistic regression |
+| Class-weighted LightGBM scores terribly | Early stopping triggered by log-loss | `metric="auc"` in the parameters |
+| SMOTE/undersampling looks amazing in CV | Resampled before splitting (leakage) | Resample inside each fold, on training rows only |
+| Different scores every run | No fixed seed | `random_state=42` everywhere |
+| Comparing versions on different folds | Unfair comparison | One shared CV function with fixed folds |
+| CV better, leaderboard worse | Public LB is a small sample | Trust CV; look for 5/5-fold wins |
+| Training takes forever | CatBoost on 700k rows / tiny learning rate | Start with LightGBM, use early stopping |
 
----
+## 19. What to try next
 
-## 17. What to try next
+- **v9: add the original 20,000-row dataset to training** (needs `credit_card_fraud_2026.csv` in `data/`).
+- **Seed averaging:** train v4 with 5 seeds and average the predictions.
+- **Optuna** for automatic hyperparameter tuning.
+- **Stacking:** a logistic regression trained on the models' OOF predictions instead of fixed weights.
+- **A neural network** (MLP): different from trees, so more useful in the ensemble.
 
-- **Add the original dataset.** Playground data is generated from a real dataset (here, `credit_card_fraud_2026.csv`). Appending it to the training data often helps a little.
-- **Automatic tuning** with Optuna: let the computer try hundreds of settings.
-- **Seed averaging:** train v4 with 5 different random seeds and average. It's cheap and usually helps a bit.
-- **Stacking:** instead of fixed weights, train a small logistic regression on the models' OOF predictions.
-- **Neural networks** (e.g. an MLP) are more *different* from trees than XGBoost is, so they can add more to an ensemble.
+## 20. Quick glossary
 
----
-
-## 18. Glossary
-
-| Term | Meaning |
+| Term | One-line meaning |
 |---|---|
-| **AUC** | Area under the ROC curve: the chance a random fraud is ranked above a random normal transaction |
-| **Baseline** | The first, simple model that everything else is compared against |
-| **Boosting** | Building many small models one after another, each fixing the previous ones' mistakes |
-| **CatBoost / LightGBM / XGBoost** | Three popular gradient-boosting libraries |
-| **Category / categorical** | A column of labels (e.g. "Gift Cards") rather than numbers |
-| **Cross-validation (CV)** | Testing by rotating which part of the data is held out |
-| **Early stopping** | Stop adding trees when the validation score stops improving |
-| **Ensemble / blend** | Combining several models' predictions |
-| **Feature engineering** | Making new clues out of existing columns |
-| **Fold** | One of the K groups the data is split into for CV |
-| **Hyperparameter** | A setting you choose before training (learning rate, tree depth...) |
-| **Imbalanced data** | One class (fraud) is much rarer than the other |
-| **Learning rate** | How big a correction each new tree is allowed to make |
-| **Logistic regression** | A model that adds weighted clues and turns the sum into a probability |
-| **One-hot encoding** | Turning a category into several 0/1 columns |
-| **OOF (out-of-fold) prediction** | A prediction made by a model that never saw that row in training |
-| **Overfitting** | Memorising the training data instead of learning patterns that generalise |
-| **Probability** | A number from 0 (surely normal) to 1 (surely fraud) |
-| **Rank** | A position in a sorted list, scaled here to 0..1 |
-| **Regularisation** | Settings that stop a model from trusting any pattern too much |
-| **ROC curve** | Plot of frauds caught vs. false alarms at every cut-off |
-| **Stratified** | Splitting so each fold has the same fraud rate as the whole data |
-| **Synthetic data** | Data generated by a computer to imitate a real dataset |
+| Accuracy | % of predictions that are right (misleading for rare classes) |
+| AUC (ROC AUC) | Chance a random fraud is ranked above a random normal row |
+| Baseline | First simple model to beat |
+| Boosting | Small trees built in sequence, each fixing earlier mistakes |
+| Class weights | Make rare-class errors count more in training |
+| Confusion matrix | Counts of TP, FP, FN, TN at a threshold |
+| Cross-validation | Rotate which part of the data is held out for checking |
+| Data leakage | Validation answers sneaking into training |
+| Early stopping | Stop adding trees when validation stops improving |
+| Ensemble | Combining several models |
+| F1 | Harmonic mean of precision and recall |
+| Feature / target | Input clue / answer to predict |
+| Feature importance | How much each feature helps the model |
+| Hyperparameter | A setting chosen before training |
+| Imbalanced data | One class much rarer than the other |
+| Learning rate | Size of each tree's correction |
+| Log-loss | Penalty for confident wrong probabilities |
+| OOF prediction | Prediction from a model that never saw that row |
+| Overfitting | Memorising training data instead of learning patterns |
+| PR-AUC | Area under the precision-recall curve |
+| Precision / recall | % of alarms that are real / % of fraud caught |
+| Rank averaging | Average models' rankings instead of raw probabilities |
+| Regularisation | Limits on complexity to prevent overfitting |
+| SMOTE | Create synthetic minority rows between real ones |
+| Stratified | Each fold keeps the same class balance |
+| Threshold | Score cut-off that turns probabilities into decisions |
+| Undersampling | Drop majority rows to balance classes |
 
 ---
 
-*Data: Kaggle Playground Series S6E11, "Predicting Credit Card Fraud". All numbers in this guide come from running the code in this folder (`results.csv`).*
+*Data: Kaggle Playground Series S6E11 "Predicting Credit Card Fraud", generated from the CC0 dataset "Credit Card Fraud 2026" (20,000 synthetic transactions). All numbers in this guide come from running the code in this folder (`results.csv`, `v8_imbalance_results.csv`, `analysis_results.txt`).*
