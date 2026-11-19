@@ -1,0 +1,275 @@
+{
+ "full": {
+  "auc": 0.9479120214989407,
+  "folds": [
+   0.9466030054392178,
+   0.9496484708570526,
+   0.952482201969722,
+   0.9487210330340275,
+   0.9425699566124328
+  ],
+  "iters": [
+   680,
+   698,
+   515,
+   499,
+   693
+  ],
+  "gain": {
+   "amount_usd": 0.725,
+   "hours_since_last_txn": 1.017,
+   "txn_count_last_24h": 0.21,
+   "distance_from_home_km": 0.408,
+   "card_age_months": 0.245,
+   "customer_age": 1.786,
+   "account_balance_usd": 0.375,
+   "cvv_retry_count": 14.585,
+   "velocity_score": 9.054,
+   "time_of_day_hour": 0.206,
+   "day_of_week": 0.093,
+   "merchant_risk_score": 10.908,
+   "prior_disputes": 0.368,
+   "is_foreign_transaction": 2.721,
+   "is_new_merchant": 7.827,
+   "used_vpn": 2.88,
+   "ip_country_mismatch": 6.156,
+   "billing_shipping_mismatch": 4.016,
+   "is_ai_generated_scam_attempt": 1.254,
+   "merchant_category": 1.713,
+   "card_type": 0.11,
+   "auth_method": 9.546,
+   "channel": 0.206,
+   "device_type": 0.292,
+   "amount_usd_te": 0.556,
+   "hours_since_last_txn_te": 0.867,
+   "txn_count_last_24h_te": 0.464,
+   "distance_from_home_km_te": 0.474,
+   "card_age_months_te": 0.343,
+   "customer_age_te": 3.392,
+   "account_balance_usd_te": 0.459,
+   "cvv_retry_count_te": 6.822,
+   "velocity_score_te": 2.782,
+   "time_of_day_hour_te": 0.336,
+   "day_of_week_te": 0.194,
+   "merchant_risk_score_te": 6.315,
+   "prior_disputes_te": 0.293
+  },
+  "perm": {
+   "amount_usd": 0.00041,
+   "hours_since_last_txn": 0.00312,
+   "txn_count_last_24h": 7e-05,
+   "distance_from_home_km": 1e-05,
+   "card_age_months": -5e-05,
+   "customer_age": 0.00071,
+   "account_balance_usd": 5e-05,
+   "cvv_retry_count": 0.01255,
+   "velocity_score": 0.02925,
+   "time_of_day_hour": 2e-05,
+   "day_of_week": 1e-05,
+   "merchant_risk_score": 0.02715,
+   "prior_disputes": 0.00023,
+   "is_foreign_transaction": 0.00242,
+   "is_new_merchant": 0.01502,
+   "used_vpn": 0.00408,
+   "ip_country_mismatch": 0.00588,
+   "billing_shipping_mismatch": 0.0056,
+   "is_ai_generated_scam_attempt": 0.00155,
+   "merchant_category": 0.00161,
+   "card_type": 5e-05,
+   "auth_method": 0.02195,
+   "channel": 0.0004,
+   "device_type": 2e-05,
+   "amount_usd_te": 0.00044,
+   "hours_since_last_txn_te": 0.00187,
+   "txn_count_last_24h_te": 8e-05,
+   "distance_from_home_km_te": 0.00012,
+   "card_age_months_te": -4e-05,
+   "customer_age_te": 0.01073,
+   "account_balance_usd_te": 0.00014,
+   "cvv_retry_count_te": 0.00229,
+   "velocity_score_te": 0.00197,
+   "time_of_day_hour_te": -5e-05,
+   "day_of_week_te": -1e-05,
+   "merchant_risk_score_te": 0.00459,
+   "prior_disputes_te": 4e-05
+  }
+ },
+ "base": {
+  "auc": 0.9471625310934062,
+  "folds": [
+   0.9454801291645454,
+   0.9492246264089345,
+   0.9517355928029866,
+   0.9473564862039949,
+   0.9423159538259369
+  ],
+  "iters": [
+   968,
+   955,
+   847,
+   698,
+   1069
+  ]
+ },
+ "high_signal_only": {
+  "auc": 0.9474197219739648,
+  "folds": [
+   0.9460506518601889,
+   0.9488567329825839,
+   0.9520506734611368,
+   0.9474617046995863,
+   0.9429033696429064
+  ],
+  "cols": [
+   "merchant_risk_score",
+   "velocity_score",
+   "amount_usd",
+   "hours_since_last_txn"
+  ]
+ },
+ "noise_only": {
+  "auc": 0.9472101991455857,
+  "folds": [
+   0.9454530355767934,
+   0.9490792941969539,
+   0.9516819317741686,
+   0.9475908112084697,
+   0.9427369085950279
+  ],
+  "cols": [
+   "account_balance_usd",
+   "distance_from_home_km",
+   "card_age_months"
+  ]
+ },
+ "drop_amount_usd": {
+  "auc": 0.9478177326028915,
+  "folds": [
+   0.9462153271590354,
+   0.9497128019479991,
+   0.952753856655738,
+   0.948580308772582,
+   0.9420991067188046
+  ]
+ },
+ "drop_hours_since_last_txn": {
+  "auc": 0.9472724929378475,
+  "folds": [
+   0.945363389870371,
+   0.9495627188551233,
+   0.9518323753001274,
+   0.9477204863316129,
+   0.9419523887037637
+  ]
+ },
+ "drop_txn_count_last_24h": {
+  "auc": 0.9479305192373685,
+  "folds": [
+   0.9464426509397033,
+   0.9495598447120047,
+   0.9526588110731953,
+   0.9485241340337286,
+   0.9426584367199381
+  ]
+ },
+ "drop_distance_from_home_km": {
+  "auc": 0.9479049226074285,
+  "folds": [
+   0.9463773229405985,
+   0.9495759305919232,
+   0.9527665867793669,
+   0.9483397787261532,
+   0.9427880061989021
+  ]
+ },
+ "drop_card_age_months": {
+  "auc": 0.9480246019234964,
+  "folds": [
+   0.9464484482711805,
+   0.9496444253064144,
+   0.9528702516840831,
+   0.9485941233026416,
+   0.9427617909064798
+  ]
+ },
+ "drop_customer_age": {
+  "auc": 0.9473630971522187,
+  "folds": [
+   0.9459844659181953,
+   0.9492106192336065,
+   0.9519966364633273,
+   0.9477944869721648,
+   0.9422946416663155
+  ]
+ },
+ "drop_account_balance_usd": {
+  "auc": 0.9477453740511671,
+  "folds": [
+   0.9464666951000128,
+   0.9495120624710575,
+   0.9525797954412996,
+   0.9480199036865631,
+   0.9424054841608738
+  ]
+ },
+ "drop_cvv_retry_count": {
+  "auc": 0.9478741155412701,
+  "folds": [
+   0.9464324426627209,
+   0.9495746970407685,
+   0.9527292198116445,
+   0.9484540515493634,
+   0.9426980346441568
+  ]
+ },
+ "drop_velocity_score": {
+  "auc": 0.9479812463807898,
+  "folds": [
+   0.9466001860399418,
+   0.949542373029026,
+   0.9530678156212767,
+   0.9485583720694291,
+   0.9428050708410718
+  ]
+ },
+ "drop_time_of_day_hour": {
+  "auc": 0.9479274674796919,
+  "folds": [
+   0.9463309411802904,
+   0.9497165181373719,
+   0.9528233518827527,
+   0.9483829965171103,
+   0.9425338449461375
+  ]
+ },
+ "drop_day_of_week": {
+  "auc": 0.9479442985099622,
+  "folds": [
+   0.9463662256358402,
+   0.9497525738743957,
+   0.9528909517288999,
+   0.9483510671174501,
+   0.942593269797101
+  ]
+ },
+ "drop_merchant_risk_score": {
+  "auc": 0.9479482724324398,
+  "folds": [
+   0.9462142578389131,
+   0.9497401700048508,
+   0.952826415563958,
+   0.9484593865804275,
+   0.9426751378218431
+  ]
+ },
+ "drop_prior_disputes": {
+  "auc": 0.9479647792942505,
+  "folds": [
+   0.946572532924219,
+   0.9499698870587906,
+   0.9528031552013795,
+   0.9484097307088849,
+   0.9424228968073993
+  ]
+ }
+}
