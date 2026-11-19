@@ -1,0 +1,8 @@
+iteration,cv_auc,fold_std,seconds,description
+v1_logistic_regression,0.94187,0.00338,11,"Logistic regression, raw features (one-hot + scaling)"
+v2_lightgbm,0.94519,0.00333,31,"LightGBM, raw features, default-ish settings"
+v3_lightgbm_features,0.94522,0.0033,34,"LightGBM + engineered features (flag count, ratios, frequency encodings)"
+v4_lightgbm_tuned,0.94737,0.00311,188,"LightGBM, strong regularisation (depth 4, lr 0.02, feature/row sampling), raw features"
+v5_xgboost,0.94712,0.00306,338,"XGBoost, regularised, raw features"
+v6_catboost,0.94619,0.00291,1731,"CatBoost, native categories, raw features"
+v7_ensemble,0.94744,,0,"Rank-average blend: v4_lightgbm_tuned 0.63, v5_xgboost 0.24, v6_catboost 0.12, v1_logistic_regression 0.01"

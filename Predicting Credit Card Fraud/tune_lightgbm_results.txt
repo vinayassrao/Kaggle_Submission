@@ -1,0 +1,8 @@
+raw  A small trees      AUC 0.94732  trees~1814
+raw  B tiny trees       AUC 0.94735  trees~3060
+raw  C depth-limited    AUC 0.94737  trees~2213
+eng  A small trees      AUC 0.94721  trees~1465
+eng  B tiny trees       AUC 0.94731  trees~2968
+eng  C depth-limited    AUC 0.94726  trees~2043
+
+[exited with code 0]
