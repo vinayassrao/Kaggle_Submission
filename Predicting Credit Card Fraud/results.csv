@@ -17,4 +17,5 @@ v14_lightgbm_extratrees,0.94758,0.00346,238,"LightGBM extra_trees, depth 5 + v9 
 v12_xgboost_woe,0.94847,0.00318,445,"XGBoost + v9 features (max_bin 1024, one-hot categoricals)"
 v13_catboost_woe,0.9478,0.00341,1977,"CatBoost depth 4, rsm 0.4 + v9 features + exact hours/age as categorical"
 v11_ebm,0.94927,0.00312,724,"Explainable Boosting Machine (max_bins 1024, 10 interactions, 4 bags) + WoE features"
+v11b_ebm_big,0.94919,0.00314,1297,"Explainable Boosting Machine (max_bins 1024, 20 interactions, 8 bags) + WoE features"
 v15_stack,0.94941,,0,"LogReg stack of v9_lightgbm_woe, v10_spline_logreg, v11_ebm, v12_xgboost_woe, v13_catboost_woe, v14_lightgbm_extratrees"
