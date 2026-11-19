@@ -1,0 +1,6 @@
+# Kaggle competition data must not be redistributed: download it from each competition's Data tab
+**/data/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
