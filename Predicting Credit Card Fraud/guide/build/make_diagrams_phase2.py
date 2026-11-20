@@ -45,9 +45,9 @@ res = pd.read_csv(RESULTS).set_index("iteration")
 # 21. Phase 2 progress ----------------------------------------------------------------------
 steps = [("v4", "v4_lightgbm_tuned", "Tuned\nLightGBM"), ("v7", "v7_ensemble", "Old\nblend"), ("v9", "v9_lightgbm_woe", "+ per-value\nscores"),
          ("v11", "v11_ebm", "EBM"), ("v15", "v15_stack", "Stack 1"), ("v19", "v19_sparse_glm", "Sparse\nGLM"),
-         ("v16", "v16_glm_lgb", "GLM-boost\n+ digits"), ("v17", "v17_glm_lgb10", "GLM-boost\n10 folds"), ("v23", "v23_stack", "Final\nstack")]
+         ("v16", "v16_glm_lgb", "GLM-boost\n+ digits"), ("v17", "v17_glm_lgb10", "GLM-boost\n10 folds"), ("v23", "v23_stack", "Stack 2"), ("v30", "v30_stack", "Final\nstack")]
 vals = [res.loc[k, "cv_auc"] for _, k, _ in steps]
-fig, ax = plt.subplots(figsize=(11.5, 4.3))
+fig, ax = plt.subplots(figsize=(12.5, 4.3))
 ax.plot(range(len(vals)), np.maximum.accumulate(vals), color=AXIS, lw=1.5, ls="--", zorder=1, label="best so far")
 ax.scatter(range(len(vals)), vals, color=[BLUE if v >= 0.951 else ORANGE if v >= 0.9485 else MUTED for v in vals], s=80,
            edgecolor=SURFACE, linewidth=2, zorder=3)
@@ -56,7 +56,7 @@ for i, v in enumerate(vals):
 ax.set_xticks(range(len(vals))); ax.set_xticklabels([f"{a}\n{c}" for a, _, c in steps], fontsize=8.5)
 ax.axhline(0.944, color=ORANGE, lw=1, ls=":"); ax.text(len(vals) - 0.5, 0.9442, "simulated ceiling of v4 (0.944)", color=ORANGE, fontsize=9, ha="right")
 ax.set_ylim(0.9435, 0.9525); ax.set_ylabel("5-fold CV AUC"); ax.grid(axis="x", visible=False)
-ax.set_title("Breaking the plateau: from 0.9474 to 0.9516", loc="left")
+ax.set_title("Breaking the plateau: from 0.9474 to 0.9517", loc="left")
 save(fig, "21_phase2_progress.png")
 
 # 22. GLM-boost concept --------------------------------------------------------------------------
@@ -108,4 +108,16 @@ ax.set_xscale("log"); ax.set_yscale("log"); ax.set_xlim(3e-5, 0.5); ax.set_ylim(
 ax.set_xlabel("Average predicted fraud probability"); ax.set_ylabel("Real fraud rate")
 ax.set_title("v4's probabilities are honest (calibrated)", loc="left", fontsize=12); ax.legend(frameon=False, loc="upper left", fontsize=9.5)
 save(fig, "24_calibration.png")
-print("phase 2 images saved")
+# 25. v30 stack weights (LogReg C=0.01 coefficients from run_v30.log) -------------------------
+w = {"v17b GLM-boost\nLGB m100": 0.383, "v17 GLM-boost\nLGB m20": 0.321, "v28 GLM-boost\nXGB (GPU)": 0.262, "v11 EBM": 0.199,
+     "v27 digit CNN\n(no TE)": 0.159, "v16 GLM-boost\n5-fold": 0.116, "v22 raw\n4-leaf LGB": 0.071, "v29 sparse\nGLM": -0.009,
+     "v26 RealMLP": -0.027, "v10 spline\nLogReg": -0.108}
+fig, ax = plt.subplots(figsize=(14, 4.2))
+ax.bar(range(len(w)), list(w.values()), color=[BLUE if v > 0.05 else (ORANGE if v < 0 else AXIS) for v in w.values()], width=0.6)
+for i, v in enumerate(w.values()):
+    ax.text(i, v + (0.01 if v >= 0 else -0.03), f"{v:+.3f}", ha="center", fontsize=9)
+ax.axhline(0, color=AXIS, lw=1); ax.set_xticks(range(len(w))); ax.set_xticklabels(list(w), fontsize=8.5)
+ax.set_ylabel("stack weight (coefficient)"); ax.grid(axis="x", visible=False)
+ax.set_title("Who the final stack trusts: the digit CNN earns weight because it sees the data differently", loc="left", fontsize=12)
+save(fig, "25_v30_stack_weights.png")
+print("phase 2/3 images saved")
