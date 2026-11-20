@@ -14,7 +14,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score, roc_curve
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))  # competition folder (guide/build -> guide -> root)
 sys.path.insert(0, ROOT)
 from common import FLAGS, NUMS, OOF_DIR, RESULTS, load  # noqa: E402
 

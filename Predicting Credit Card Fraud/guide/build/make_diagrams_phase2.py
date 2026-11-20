@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))
+sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))  # competition folder
 from common import OOF_DIR, RESULTS, load  # noqa: E402
 from fe_keys import build_key_store, encode_keys  # noqa: E402
 

@@ -46,4 +46,4 @@ Only the v4, v7, v15 and v23 submissions are committed. The others are regenerat
 
 ## Guide
 
-[guide/Credit_Card_Fraud_Beginner_Guide.md](guide/Credit_Card_Fraud_Beginner_Guide.md): a beginner's walkthrough of every iteration and why each one did or didn't beat the previous one, the dataset questions, and a detailed "Terms and techniques" section (every method explained in depth and like you're 5), with 20 diagrams (`guide/make_diagrams.py`).
+[guide/Credit_Card_Fraud_Beginner_Guide.md](guide/Credit_Card_Fraud_Beginner_Guide.md): a beginner's walkthrough of every iteration and why each one did or didn't beat the previous one, the dataset questions, and a detailed "Terms and techniques" section (every method explained in depth and like you're 5), with 24 diagrams **embedded inside the file** (one self-contained Markdown file). Sources and diagram scripts are in `guide/build/`. Rebuild with `python guide/build/build_guide.py`.
