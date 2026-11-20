@@ -29,3 +29,9 @@ v17_glm_lgb10,0.95149,0.00459,1497,"GLM-boost lgb 10-fold, seeds 0:42,1:137, 73 
 v20_ebm_digits,0.94995,0.00318,1792,EBM (v11 settings) on raw + cents + 60 exact/digit TE logits
 v24_torch_mlp,0.94863,0.00354,183,"PyTorch residual MLP on GPU (cuda), 73 TE logits + quantile nums + one-hots, fixed 10 epochs, 3 seeds, full refit"
 v23_stack,0.95156,1e-05,0,"lr_C0.05 on rank-logits of v16_glm_lgb, v17_glm_lgb10, v18_glm_xgb, v19_sparse_glm, v21_mlp_bag, v22_lgb4_raw, v11_ebm, v10_spline_logreg; zero-fraud zones applied (+0.000021)"
+v28_glm_xgb10_gpu,0.9515,0.00454,1149,"GLM-boost xgbgpu 10-fold, seeds 0:42:20:d2,1:137:20:d2,2:2026:100:lg,3:777:100:lg, 73 TE keys + digits (GLM alone 0.95094), full refit"
+v17b_glm_lgb10_s100,0.95152,0.00451,814,"GLM-boost lgb 10-fold, seeds 2:2026:100,3:777:100, 73 TE keys + digits (GLM alone 0.95091), full refit"
+v19_sparse_glm_10f,0.95035,0.00472,351,"Joint sparse L2 LogReg C=0.01 on 62172 cols (exact+digit one-hots, splines) + 60 TE logits"
+v26_realmlp,0.94747,0.00345,981,"RealMLP (pytabkit, GPU, n_ens 8, PBLD embeddings) on raw + categorical cents/ages, no TE, 5% inner holdout"
+v27_digit_cnn,0.94783,0.0034,3277,"1-D char/digit CNN on GPU, no target encoding, 2 seeds, 5% inner holdout for epoch, full refit 7 epochs"
+v30_stack,0.95166,1e-05,0,"lr_C0.05 on rank-logits of v17_glm_lgb10, v17b_glm_lgb10_s100, v28_glm_xgb10_gpu, v19_sparse_glm_10f, v16_glm_lgb, v26_realmlp, v27_digit_cnn, v11_ebm, v22_lgb4_raw, v10_spline_logreg; zero-fraud zones applied (+0.000034)"

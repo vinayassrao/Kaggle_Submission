@@ -3,6 +3,8 @@ starting score; tiny trees (4-leaf LightGBM or depth-2 XGBoost) then learn only 
 (the GLM log-odds are passed as init_score / base_margin).
 
 Usage: python v16_glm_boost.py NAME ENGINE N_FOLDS SEEDS [refit]
+  ENGINE: lgb | xgb | xgbgpu (XGBoost on CUDA)
+  SEEDS: comma list of teseed:modelseed[:smooth[:variant]]  (smooth default 20; variant for XGBoost: d2 = max_depth 2 (default), lg = lossguide max_leaves 4)
   e.g. python v16_glm_boost.py v16_glm_lgb lgb 5 0:42,1:137,2:2026 refit
 Saves: oof/<NAME>_oof.npy (probabilities), oof/<NAME>_test.npy (fold-mean probabilities),
        oof/<NAME>_full.npy (full-data refit probabilities, if refit), oof/<NAME>_glm_oof.npy (GLM alone).
@@ -27,7 +29,12 @@ from fe_keys import N_TREE_KEYS, build_key_store, encode_keys, glm_base_matrix, 
 
 warnings.filterwarnings("ignore")
 NAME, ENGINE, NF = sys.argv[1], sys.argv[2], int(sys.argv[3])
-SEEDS = [tuple(map(int, s.split(":"))) for s in sys.argv[4].split(",")]
+def _parse(spec):
+    p = spec.split(":")
+    return int(p[0]), int(p[1]), float(p[2]) if len(p) > 2 else 20.0, p[3] if len(p) > 3 else "d2"
+
+
+SEEDS = [_parse(s) for s in sys.argv[4].split(",")]
 REFIT = len(sys.argv) > 5 and sys.argv[5] == "refit"
 
 train, test, y = load()
@@ -56,7 +63,7 @@ def glm_offsets(a_rows, Ea, Eb, Et, b_rows):
     return ga, gb, gt
 
 
-def boost(Xa, ya, ga, Xb, yb, gb, Xt, gt, mseed, n_rounds=None):
+def boost(Xa, ya, ga, Xb, yb, gb, Xt, gt, mseed, n_rounds=None, variant="d2"):
     """Returns (val_margin or None, test_margin, best_iter)."""
     if ENGINE == "lgb":
         dtr = lgb.Dataset(Xa, ya, init_score=ga)
@@ -69,12 +76,17 @@ def boost(Xa, ya, ga, Xb, yb, gb, Xt, gt, mseed, n_rounds=None):
             bst = lgb.train(p, dtr, n_rounds); it = n_rounds
         vm = bst.predict(Xb, raw_score=True, num_iteration=it) + gb if Xb is not None else None
         return vm, bst.predict(Xt, raw_score=True, num_iteration=it) + gt, it
+    xp = dict(XGB_P)
+    if variant == "lg":
+        xp.update(grow_policy="lossguide", max_depth=0, max_leaves=4)
+    if ENGINE == "xgbgpu":
+        xp["device"] = "cuda"
     if n_rounds is None:
-        m = xgb.XGBClassifier(**XGB_P, n_estimators=30000, early_stopping_rounds=300, random_state=mseed)
+        m = xgb.XGBClassifier(**xp, n_estimators=30000, early_stopping_rounds=300, random_state=mseed)
         m.fit(Xa, ya, base_margin=ga, eval_set=[(Xb, yb)], base_margin_eval_set=[gb], verbose=False)
         it = m.best_iteration + 1
     else:
-        m = xgb.XGBClassifier(**XGB_P, n_estimators=n_rounds, random_state=mseed)
+        m = xgb.XGBClassifier(**xp, n_estimators=n_rounds, random_state=mseed)
         m.fit(Xa, ya, base_margin=ga, verbose=False); it = n_rounds
     vm = m.predict(Xb, output_margin=True, base_margin=gb, iteration_range=(0, it)) if Xb is not None else None
     return vm, m.predict(Xt, output_margin=True, base_margin=gt, iteration_range=(0, it)), it
@@ -84,15 +96,15 @@ folds = list(StratifiedKFold(NF, shuffle=True, random_state=42).split(np.zeros(n
 oof = np.zeros(n); glm_oof = np.zeros(n); test_m = np.zeros(len(test)); iters = []; t0 = time.time()
 for k, (tr, va) in enumerate(folds):
     vm_sum = np.zeros(len(va)); gb_sum = np.zeros(len(va))
-    for teseed, mseed in SEEDS:
-        Ea, Eb, Et = encode_keys(kmat, ncat, y, n, tr, va, smooth=20.0, teseed=teseed)
+    for teseed, mseed, smooth, variant in SEEDS:
+        Ea, Eb, Et = encode_keys(kmat, ncat, y, n, tr, va, smooth=smooth, teseed=teseed)
         ga, gb, gt = glm_offsets(tr, Ea, Eb, Et, va)
         Xa = tree_frame(raw_all, cents, kcnt, knames, tr, Ea[:, :N_TREE_KEYS])
         Xb = tree_frame(raw_all, cents, kcnt, knames, va, Eb[:, :N_TREE_KEYS])
         Xt = tree_frame(raw_all, cents, kcnt, knames, test_rows, Et[:, :N_TREE_KEYS])
-        vm, tm, it = boost(Xa, y[tr], ga, Xb, y[va], gb, Xt, gt, mseed)
+        vm, tm, it = boost(Xa, y[tr], ga, Xb, y[va], gb, Xt, gt, mseed, variant=variant)
         vm_sum += vm / len(SEEDS); gb_sum += gb / len(SEEDS); test_m += tm / (len(SEEDS) * NF); iters.append(it)
-        print(f"  fold {k + 1} seed ({teseed},{mseed}): GLM {roc_auc_score(y[va], gb):.5f} -> boost {roc_auc_score(y[va], vm):.5f} ({it} trees)", flush=True)
+        print(f"  fold {k + 1} seed ({teseed},{mseed},m{smooth:g},{variant}): GLM {roc_auc_score(y[va], gb):.5f} -> boost {roc_auc_score(y[va], vm):.5f} ({it} trees)", flush=True)
     oof[va] = expit(vm_sum); glm_oof[va] = expit(gb_sum)
     print(f"  fold {k + 1}: AUC {roc_auc_score(y[va], oof[va]):.5f}  (GLM {roc_auc_score(y[va], glm_oof[va]):.5f})  {time.time() - t0:.0f}s", flush=True)
 fa = [roc_auc_score(y[va], oof[va]) for _, va in folds]
@@ -104,12 +116,12 @@ final_test = expit(test_m)
 if REFIT:   # full-data refit: encodings use 100% of train labels; tree count = mean CV iterations x multiplier
     mult = 1.20 if NF == 5 else 1.11
     n_rounds = int(round(np.mean(iters) * mult)); full_m = np.zeros(len(test))
-    for teseed, mseed in SEEDS:
-        Ea, _, Et = encode_keys(kmat, ncat, y, n, None, None, smooth=20.0, teseed=teseed)
+    for teseed, mseed, smooth, variant in SEEDS:
+        Ea, _, Et = encode_keys(kmat, ncat, y, n, None, None, smooth=smooth, teseed=teseed)
         ga, _, gt = glm_offsets(np.arange(n), Ea, None, Et, None)
         Xa = tree_frame(raw_all, cents, kcnt, knames, np.arange(n), Ea[:, :N_TREE_KEYS])
         Xt = tree_frame(raw_all, cents, kcnt, knames, test_rows, Et[:, :N_TREE_KEYS])
-        _, tm, _ = boost(Xa, y, ga, None, None, None, Xt, gt, mseed, n_rounds=n_rounds)
+        _, tm, _ = boost(Xa, y, ga, None, None, None, Xt, gt, mseed, n_rounds=n_rounds, variant=variant)
         full_m += tm / len(SEEDS)
     final_test = expit(full_m); np.save(os.path.join(OOF_DIR, f"{NAME}_full.npy"), final_test)
     print(f"  full refit done ({n_rounds} trees x {len(SEEDS)} seeds)", flush=True)

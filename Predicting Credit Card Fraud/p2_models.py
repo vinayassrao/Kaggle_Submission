@@ -26,20 +26,23 @@ from fe_keys import FEATS, FLOATS, N_TREE_KEYS, build_key_store, encode_keys, sa
 
 warnings.filterwarnings("ignore")
 WHICH = sys.argv[1]
+NF = int(sys.argv[2]) if len(sys.argv) > 2 else 5   # number of outer folds (5 or 10)
+SUFFIX = "" if NF == 5 else f"_{NF}f"
 train, test, y = load()
 n = len(train)
 knames, kmat, kcnt, ncat, cents = build_key_store(train, test)
-folds = list(StratifiedKFold(5, shuffle=True, random_state=42).split(np.zeros(n), y))
+folds = list(StratifiedKFold(NF, shuffle=True, random_state=42).split(np.zeros(n), y))
 ALL_TR, TEST_ROWS = np.arange(n), np.arange(n, n + len(test))
 
 
 def run(name, fit_predict, needs_te, desc):
+    name = name + SUFFIX
     """fit_predict(tr_rows, va_rows_or_None, Ea, Eb, Et) -> (p_va or None, p_te, info)."""
     oof = np.zeros(n); tmean = np.zeros(len(test)); t0 = time.time(); infos = []
     for k, (tr, va) in enumerate(folds):
         Ea, Eb, Et = encode_keys(kmat, ncat, y, n, tr, va, smooth=20.0, teseed=0, n_cols=N_TREE_KEYS) if needs_te else (None, None, None)
         p_va, p_te, info = fit_predict(tr, va, Ea, Eb, Et)
-        oof[va] = p_va; tmean += p_te / 5; infos.append(info)
+        oof[va] = p_va; tmean += p_te / NF; infos.append(info)
         print(f"  {name} fold {k + 1}: AUC {roc_auc_score(y[va], p_va):.5f} ({info}) {time.time() - t0:.0f}s", flush=True)
     fa = [roc_auc_score(y[va], oof[va]) for _, va in folds]
     auc = roc_auc_score(y, oof)

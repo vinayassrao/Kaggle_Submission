@@ -14,3 +14,5 @@ catboost_info/
 !Predicting Credit Card Fraud/submissions/v15_stack.csv
 Predicting Credit Card Fraud/keys_cache.npz
 !Predicting Credit Card Fraud/submissions/v23_stack.csv
+!Predicting Credit Card Fraud/submissions/v30_stack.csv
+Predicting Credit Card Fraud/parts/
