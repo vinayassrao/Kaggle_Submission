@@ -24,6 +24,6 @@ Download `train.csv` and `test.csv` from the competition's Data tab into `data/`
 | `titanic_improved.py` | + title, age, fare, family features -> `submission_improved.csv` | 83.2% | - |
 | `experiments.py` | Tests every feature group and model, writes `submissions/` | up to 84.5% | - |
 | `submissions/` | Ready-to-upload predictions from the best experiments | | |
-| `guide/Titanic_Beginner_Guide.md` | Beginner's guide to the whole project, with diagrams | | |
+| `guide/Titanic_Beginner_Guide.md` | Beginner's guide to the whole project, diagrams embedded in the file (sources in `guide/build/`) | | |
 
 Run any script from inside this folder, e.g. `python experiments.py`.

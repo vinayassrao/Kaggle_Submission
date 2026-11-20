@@ -11,7 +11,7 @@ import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 IMG = os.path.join(HERE, "images")
 os.makedirs(IMG, exist_ok=True)
-train = pd.read_csv(os.path.join(HERE, "..", "data", "train.csv"))
+train = pd.read_csv(os.path.join(HERE, "..", "..", "data", "train.csv"))
 
 # Palette (light mode, validated reference palette)
 SURFACE, INK, INK2, MUTED = "#fcfcfb", "#0b0b0b", "#52514e", "#898781"
@@ -100,7 +100,7 @@ ax.text(6.0, 0.55, "The model GUESSES the '?' for these", color=INK2, fontsize=1
 save(fig, "02_train_test.png")
 
 # 3. Missing values -------------------------------------------------------------
-full = pd.concat([train, pd.read_csv(os.path.join(HERE, "..", "data", "test.csv"))])
+full = pd.concat([train, pd.read_csv(os.path.join(HERE, "..", "..", "data", "test.csv"))])
 miss = (full.drop(columns="Survived").isna().mean() * 100).sort_values()
 miss = miss[miss > 0]
 fig, ax = plt.subplots(figsize=(8, 2.6))
