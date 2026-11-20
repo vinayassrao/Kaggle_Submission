@@ -37,6 +37,7 @@ After modelling for a competition is complete (and again whenever new iterations
 
 ## Environment notes
 - Windows, Python 3.14, Git Bash + PowerShell. No Kaggle API token is set up: the user downloads data manually into `data/`.
-- **GPU: NVIDIA RTX 3050 Laptop, 6 GB.** Use it where possible: XGBoost `device="cuda"` ✅, CatBoost `task_type="GPU"` ✅. LightGBM pip build is CPU-only (no `device_type="gpu"`). scikit-learn / interpret (EBM) are CPU-only. PyTorch is not installed; install the CUDA build for neural nets.
+- **GPU: NVIDIA RTX 3050 Laptop, 6 GB.** Use it where possible: XGBoost `device="cuda"` ✅, CatBoost `task_type="GPU"` ✅. LightGBM pip build is CPU-only (no `device_type="gpu"`). scikit-learn / interpret (EBM) are CPU-only. PyTorch (CUDA 12.8 build) is installed in the venv **`E:\envs\kaggle`** (created with `--system-site-packages`, so it also sees every package of the base Python). Run GPU/PyTorch scripts with `E:\envs\kaggle\Scripts\python.exe`.
+- **The user prefers installs on the E: drive, not C:.** Install new packages into `E:\envs\kaggle` (`E:\envs\kaggle\Scripts\python.exe -m pip install ...`), with `PIP_CACHE_DIR`, `TMP` and `TEMP` pointed at a folder on E: during large installs, and delete that cache afterwards.
 - **Whenever a needed dataset file is missing, give the user the direct download link** (competition Data tab, e.g. `https://www.kaggle.com/competitions/<slug>/data`, or the original dataset's Kaggle page) together with the exact folder to put it in. Never just say "re-download it".
 - Kaggle pages render client-side, so web fetches only return the title. Ask the user for the Overview/Evaluation text.

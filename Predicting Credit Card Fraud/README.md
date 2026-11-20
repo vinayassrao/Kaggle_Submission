@@ -35,6 +35,7 @@ Optional original dataset (CC0, 20k rows): https://www.kaggle.com/datasets/uditj
 | v17 | `v16_glm_boost.py v17_glm_lgb10 lgb 10 ...` | Same, 10-fold, 2 seeds | **0.95149** (best single) | - |
 | v18 | `v16_glm_boost.py v18_glm_xgb xgb 5 ...` | GLM → depth-2 XGBoost | 0.95111 | - |
 | v19 / v20 / v21 / v22 | `p2_models.py v19 / v20 / v21 / v22` | Sparse one-hot GLM / EBM + digits / sklearn MLP / raw 4-leaf LightGBM | 0.95011 / 0.94995 / 0.94259 / 0.94827 | - |
+| v24 | `v24_torch_mlp.py` (run with `E:\envs\kaggle\Scripts\python.exe`) | PyTorch residual MLP on the GPU, 3 seeds, full refit (stack weight ≈ 0) | 0.94863 | - |
 | v23 | `v23_stack.py` | Rank-logit LogReg stack (nested on 3 fresh splits) + zero-fraud zones | **0.95156** | - |
 
 `common.py` holds data loading, features and the shared CV runner. Every run appends to `results.csv` and writes `oof/` predictions plus `submissions/<version>.csv`.
