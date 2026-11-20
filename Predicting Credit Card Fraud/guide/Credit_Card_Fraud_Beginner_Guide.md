@@ -9,7 +9,7 @@
 This guide assumes you know **nothing** about machine learning. It has three parts:
 
 - **Part A: The project.** What the problem is and what the data looks like.
-- **Part B: The journey.** Eight versions of the model. For each one: **what changed, why it should help, and whether it actually did**, then four questions answered with the finished model.
+- **Part B: The journey.** Twenty-three versions of the model, in two phases. For each one: **what changed, why it should help, and whether it actually did**, then four questions answered with the finished model.
 - **Part C: Terms and techniques.** Every word and method used in this project, explained in depth: how it works, why we use it, and its key settings, plus an "Explain like I'm 5" version of each. Whenever a term in Parts A or B confuses you, jump to Part C.
 
 Every important idea has two explanations:
@@ -39,6 +39,18 @@ Every important idea has two explanations:
 12. v6 CatBoost
 13. v7 Ensemble
 14. v8 Imbalance techniques: class weights, undersampling, SMOTE
+
+**Part B2: Breaking the plateau (v9 to v23)**
+- B2.1 Diagnosing the wall
+- B2.2 v9 per-value fraud scores
+- B2.3 v10 spline scorecard
+- B2.4 v11 EBM
+- B2.5 v12 to v14 boosters with new features
+- B2.6 v15 first stack
+- B2.7 v16 to v18 digit keys and GLM-boost
+- B2.8 v19 to v22 more diversity
+- B2.9 v23 final stack and zero-fraud zones
+
 15. The whole journey on one page
 16. Four questions answered with the model
 17. Submitting to Kaggle
@@ -54,6 +66,7 @@ Every important idea has two explanations:
 - C8 Understanding a model: gain and permutation importance
 - C9 Combining models: ensembles, rank averaging, weight search, correlation
 - C10 Kaggle-specific: public vs private leaderboard, synthetic data
+- C11 Advanced techniques: calibration, WoE, digit keys, splines, EBM, GLM-boost, tiny trees, sparse GLM, MLP, refits, seed bagging, rank-logit stacking, hill climbing, zero-fraud zones
 
 **Extras**
 18. Common mistakes and how to fix them
@@ -375,6 +388,135 @@ We tried four techniques (all explained in C7), each on the v4 LightGBM with the
 
 ---
 
+# Part B2: Breaking the plateau (v9 to v23)
+
+After v8, every model had landed between 0.942 and 0.947, which looked like a wall. This part covers how we found out *why*, and the ideas that got past it, step by step.
+
+## B2.1 Diagnosing the wall: is 0.96 even possible?
+
+**File:** `diagnostics.py`, report in `DIAGNOSTICS_REPORT.md`
+
+Before trying more models, we checked whether better scores were even possible. Four checks:
+
+1. **Calibration.** We grouped transactions into 20 bins by predicted probability and compared the average prediction with the real fraud rate in each bin. They matched almost perfectly (overall 1.66% predicted vs 1.67% real). The model's probabilities are honest.
+2. **Simulated ceiling.** If those probabilities were the *true* chance of fraud, what AUC could a perfect model get? We simulated it: flip a weighted coin for every row using its probability as the coin's bias, then score the model against those fake answers. The result was about **0.944**, *below* our real 0.947. So at the level of detail the model could see, it was already at the ceiling.
+3. **Missed frauds.** Only 1.4% of frauds were in the bottom half of the model's scores, and they looked completely clean: no red flags, low risk. They were random "noise" frauds that no model could catch.
+4. **Generator fingerprints.** Exact values behaved strangely. `velocity_score = 0` is almost never fraud (0.04%, against 0.35% for nearby values), and some exact values of `hours_since_last_txn` and `customer_age` had their own fraud rates.
+
+> **Explain like I'm 5:** Before practising harder for a test, check whether the test is even fair. If some answers are random coin flips, nobody can get 100%. We found the coin flips. We also found that the person who wrote the test left tiny pencil marks on some questions, and those marks give hints.
+
+![Calibration of v4](images/24_calibration.png)
+
+**Conclusion:** the only way up was **new information**, not better tuning. That information turned out to be in those *exact-value fingerprints* left by the data generator.
+
+## B2.2 v9: Per-value fraud scores (Weight of Evidence)
+
+**File:** `v9_lightgbm_woe.py` (features in `fe_v9.py`) | **CV AUC: 0.94855** | **vs v4: +0.0012, better in 5/5 folds ✅**
+
+**What changed:** for 7 numeric columns, every *exact value* gets its own smoothed fraud score, the **Weight of Evidence (WoE)** (C11). Three extras:
+- The `merchant_risk_score` and `velocity_score` scores are made "residual": the general trend is subtracted, so only the value-specific spikes remain.
+- A summed score (`woe_memo_sum`) adds up the sparse columns' scores.
+- Value-frequency features, the `velocity_score = 0` flag, and **finer histogram bins** (`max_bin = 1023`) let the trees see exact values.
+
+**Why it should help:** the diagnostics showed exact values carry signal. The scores are computed **inside each fold**, with an inner 5-fold split for the training rows, so no row ever sees its own answer.
+
+**Did it work? Yes:** a first real feature gain. The screen showed which parts mattered:
+
+| Change (fast screen) | CV AUC |
+|---|---|
+| base | 0.94716 |
+| finer bins only | 0.94751 |
+| + per-value scores (smoothing 40) | **0.94842** |
+| dropping "noise" columns | 0.94820 (worse, so we kept them) |
+| + pair scores | 0.94829 (no help) |
+
+## B2.3 v10: Spline scorecard
+
+**File:** `v10_spline_logreg.py` | **CV AUC: 0.94721** | **vs v1: +0.0053, better in 5/5 folds ✅**
+
+**What changed:** the v1 scorecard got curves instead of straight lines (**splines**, C11) and exact-age categories. It also got the zero-velocity flag, the v9 scores, and authentication interactions.
+
+**Why:** the diagnostics showed the risk curves bend (age jumps at 34, velocity accelerates above 33), and a straight line can't bend.
+
+**Result:** a *linear* model nearly matching the trees, and it thinks differently from them. That diversity is what helps an ensemble later.
+
+## B2.4 v11: Explainable Boosting Machine (EBM)
+
+**File:** `v11_ebm.py` | **CV AUC: 0.94927** | **vs v9: +0.0007, better in 5/5 folds ✅**
+
+**What changed:** a new kind of model, an **EBM** (C11). It learns one fine-grained step curve per feature, adds them up, and allows only a few 2-feature interactions.
+
+**Why it won:** the data generator seems to have built fraud mostly as a *sum* of separate effects. Deep trees waste effort on 3- and 4-way interactions that don't exist, while the EBM's shape matches the problem. A bigger EBM (v11b, more bags and interactions) scored 0.94919, so it was not better.
+
+## B2.5 v12 to v14: The old boosters with the new features
+
+| Version | Model | CV AUC | vs old version |
+|---|---|---|---|
+| v12 | XGBoost + v9 features | 0.94847 | +0.0014 vs v5 |
+| v13 | CatBoost + v9 features, depth 4 | 0.94780 | +0.0016 vs v6 |
+| v14 | LightGBM extra-trees | 0.94758 | weaker, near-zero blend weight |
+
+The same features lifted every model family, which confirms the signal is real.
+
+## B2.6 v15: First leak-free stack
+
+**File:** `v15_stack.py` | **CV AUC: 0.94941**
+
+A small logistic regression (**stacking**, C11) learns how much to trust each of v9 to v14. It is trained on 4 folds' predictions and scored on the 5th, so the score is honest. The EBM got the biggest weight. Gain over the EBM alone: +0.00014.
+
+## B2.7 v16 to v18: Digit keys and the "GLM-boost" trick
+
+**File:** `v16_glm_boost.py`, features in `fe_keys.py` | **v16 CV AUC: 0.95121** | **vs v11: +0.0019, better in 5/5 folds ✅**
+
+This was the biggest single jump of the whole project. Two ideas:
+
+**1. Digit keys.** The generator seems to have written numbers digit by digit, and individual digits carry fraud signal. For each decimal column we made 6 "keys": the integer part, the tens, the tenths, the cents, the first digit and the first two digits. On their own, the cents of `hours_since_last_txn` score AUC 0.566, and the first two digits of `amount_usd` score 0.588, against 0.545 for the raw amount. Together with 24 exact-value keys and 13 pair keys, that makes **73 keys**, each target-encoded inside the folds with a fast `np.bincount` method (6 seconds per fold).
+
+![Digit keys carry signal](images/23_digit_keys.png)
+
+**2. GLM-boost.** A logistic regression (a **GLM**, C11) on all 73 encoded keys already scores **0.95058** on its own. Its output then becomes the *starting point* (`init_score`) for a LightGBM with **only 4 leaves per tree**. The trees spend all their effort fixing the GLM's remaining mistakes instead of rebuilding what it already knows.
+
+> **Explain like I'm 5:** A good student writes the first draft of an essay, then a careful editor fixes only the small mistakes. That works far better than asking the editor to write the whole essay from scratch.
+
+![GLM-boost](images/22_glm_boost.png)
+
+| Version | What | CV AUC |
+|---|---|---|
+| GLM alone | logistic regression on 73 encoded keys | 0.95058 |
+| v16 | GLM + 4-leaf LightGBM, 3 seeds, full refit | 0.95121 |
+| v17 | the same with **10 folds** (encodings learn from 90% of labels), 2 seeds | **0.95149** (best single) |
+| v18 | GLM + depth-2 XGBoost | 0.95111 |
+
+## B2.8 v19 to v22: More diversity
+
+| Version | Model | CV AUC | Role |
+|---|---|---|---|
+| v19 | one big sparse logistic regression with 62,172 one-hot columns (every exact value and digit) | 0.95011 | strong, different linear view |
+| v20 | EBM on raw columns + digit encodings | 0.94995 | additive view |
+| v21 | scikit-learn neural network, 3 seeds | 0.94259 | weak and unstable |
+| v22 | 4-leaf LightGBM on raw columns only (no encodings) | 0.94827 | "anchor" with no encodings at all |
+
+v22 is worth noting: tiny 4-leaf trees on raw data beat the carefully tuned 16-leaf v4 (0.94737). Shallow trees suit this data.
+
+## B2.9 v23: Final stack and the zero-fraud zones
+
+**File:** `v23_stack.py` | **CV AUC: 0.95156**
+
+**What changed from v15:**
+1. Every model's predictions are converted to **rank-logits** (C11) before stacking, so models with different output scales are treated fairly.
+2. Four ways of combining are compared, each scored on **3 different fold splits** (seeds 43, 44, 45) that the base models never used: logistic regression with strong smoothing (C=0.01), with weaker smoothing (C=0.05), hill climbing, and a 50/50 mix. The best was **logistic regression with C=0.05 (0.95156), with the 50/50 mix a close second (0.95154)**.
+3. **Zero-fraud zones:** no training fraud ever had `merchant_risk_score < 13.1`, or `velocity_score ≤ 4.1` together with `merchant_risk_score ≤ 20`. Pushing those rows to the bottom of the ranking helped in **all 5 folds** (checked using only training-fold information). It's a tiny gain (+0.00002), so we kept it.
+
+**Final result: 0.95156**, up from 0.94744 (v7) and 0.94941 (v15).
+
+**An honest note:** the final stack is only +0.00007 better than v17 alone (0.95149). Hill climbing even chose v17 by itself. Once one model is very strong, blending adds little. Adding v20 to the stack changed nothing (0.95155), so the final stack uses 8 models.
+
+![Phase 2 progress](images/21_phase2_progress.png)
+
+---
+
+# Part B (continued)
+
 ## 15. The whole journey on one page
 
 ![CV AUC of every version](images/10_iterations_progress.png)
@@ -387,14 +529,24 @@ We tried four techniques (all explained in C7), each on the v4 LightGBM with the
 | v4 | Regularised LightGBM | 0.94737 | **+0.0022** (5/5) | ✅ |
 | v5 | XGBoost | 0.94712 | -0.0002 | in blend |
 | v6 | CatBoost | 0.94619 | -0.0012 | in blend |
-| v7 | Weighted rank blend | **0.94744** | **+0.0001** (5/5) | ✅ **best** |
+| v7 | Weighted rank blend | 0.94744 | +0.0001 (5/5) | ✅ |
 | v8 | Class weights / undersampling / SMOTE | 0.916 to 0.9473 | no gain | ❌ |
+| v9 | + per-value fraud scores (WoE), finer bins | 0.94855 | **+0.0011** vs v7 (5/5) | ✅ |
+| v10 | Spline scorecard | 0.94721 | -0.0013 | in blend |
+| v11 | EBM (additive model) | 0.94927 | **+0.0007** (5/5) | ✅ |
+| v12 to v14 | XGBoost / CatBoost / extra-trees + new features | 0.94758 to 0.94847 | below v11 | in blend |
+| v15 | First leak-free stack | 0.94941 | +0.0001 | ✅ |
+| v16 | Digit keys + GLM + 4-leaf LightGBM | 0.95121 | **+0.0018** (5/5) | ✅ |
+| v17 | Same, 10 folds | 0.95149 | +0.0003 | ✅ best single |
+| v18 to v22 | XGBoost GLM-boost, sparse GLM, EBM + digits, neural net, raw 4-leaf | 0.94259 to 0.95111 | below v17 | in blend |
+| v23 | Final rank-logit stack + zero-fraud zones | **0.95156** | +0.00007 | ✅ **best** |
 
-**Three big lessons**
+**Four big lessons**
 
 1. **Start simple.** The baseline was 0.942. Everything after it added 0.005.
 2. **Measure everything.** Smart-sounding features (v3) and popular imbalance tricks (v8) did nothing or hurt. A boring settings change (v4) gave the biggest gain after switching to trees.
 3. **Small, consistent gains are real.** With shared folds, winning 5 out of 5 proves a gain even when it's tiny.
+4. **When you hit a wall, diagnose before tuning.** The simulated ceiling showed tuning was pointless. The real gains (+0.004) came from *new information*: exact values and digits that the data generator left behind.
 
 ---
 
@@ -449,10 +601,10 @@ Here is the confusion matrix when flagging the top 2%:
 
 Every script writes `submissions/<version>.csv` in the required format (299,984 rows, columns `id,is_fraud`).
 
-Upload **`v7_ensemble.csv`** first (best CV), then `v4_lightgbm_tuned.csv` to compare. Short descriptions:
+Upload **`v23_stack.csv`** first (best CV), then `v17_glm_lgb10.csv` to compare. Short descriptions:
 
-- v7: *"Weighted rank blend LGBM+XGB+CatBoost (CV AUC 0.94744)"*
-- v4: *"Regularised LightGBM (CV AUC 0.94737)"*
+- v23: *"Rank-logit stack of GLM-boosted LightGBM/XGB + sparse GLM + EBM (CV AUC 0.95156)"*
+- v17: *"Digit keys + GLM + 4-leaf LightGBM, 10-fold (CV AUC 0.95149)"*
 
 The public leaderboard scores only part of the test set (C10), so trust CV over small leaderboard differences.
 
@@ -831,6 +983,108 @@ Kaggle scores your submission on part of the test set for the **public** leaderb
 
 Playground datasets are generated by a model trained on an original dataset (here the 20,000-row "Credit Card Fraud 2026", itself generated with NumPy). Patterns are similar but not identical, and sometimes generator "fingerprints" (like value frequencies) carry signal. Adding the original data to training is a common Playground trick.
 
+## C11. Advanced techniques (used in v9 to v23)
+
+### Calibration and the simulated ceiling
+> **Explain like I'm 5:** If a weather app says "30% chance of rain" on 100 days, it should rain on about 30 of them. If it does, the app is *calibrated*. And if the weather itself is partly random, even a perfect app can't be right every day.
+
+**Calibration** checks whether predicted probabilities match reality. Group rows by prediction and compare the average prediction with the real fraud rate in each group. **The simulated ceiling** takes a calibrated model's probabilities *p*, invents labels by flipping a coin with bias *p* for each row, and computes the AUC. That's roughly the best AUC achievable at that model's level of detail. Ours was 0.944, already below our real score, which proved that more tuning wouldn't help and only new information would.
+
+### Weight of Evidence (WoE) / exact-value target encoding
+> **Explain like I'm 5:** For every exact age (34, 35, 36...), write down how often people of that age were fraud victims, but be careful with ages you've only seen twice. For those, guess something close to the overall average.
+
+For each exact value: smoothed rate = (frauds + m × overall rate) ÷ (count + m). The **smoothing m** (we used 15 to 40) pulls rare values towards the average so they can't be fooled by luck. **WoE** = log-odds of that rate minus log-odds of the overall rate: positive means riskier than average.
+
+**Leak-free recipe:** inside each CV fold, training rows get scores from an inner 5-fold split (never using their own label). Validation and test rows get scores from the whole training fold. Values never seen before get 0 (the average).
+
+### Residual WoE
+> **Explain like I'm 5:** We already know higher risk scores mean more fraud. We only want to know whether score 32.2 is *strangely* safer than its neighbours.
+
+Residual WoE = WoE of the exact value − WoE of its coarse bin (`floor(x/2)`). The general trend cancels out, and only the value-specific spike remains, so it doesn't duplicate what the raw column already says.
+
+### Digit keys
+> **Explain like I'm 5:** A forger always draws the number 7 slightly differently. Look at each digit on its own, and you can spot the forger.
+
+We split each decimal number into pieces: integer part, tens, tenths, cents, first digit, first two digits. Each piece becomes its own category and is target-encoded. This works on synthetic data because the generator seems to have produced numbers digit by digit, leaving fraud-related patterns in individual digits. **Truncate, never round:** we convert to whole cents with `np.rint(x*100)` and then use integer division.
+
+### Fast target encoding with `np.bincount`
+`np.bincount(codes, weights=y)` sums the labels for every category in one vectorised step, and `np.bincount(codes)` counts them. Dividing gives every category's rate at once. Encoding 73 keys × 5 inner folds takes about 6 seconds per fold, roughly 10× faster than `groupby` or scikit-learn's `TargetEncoder`.
+
+### Histogram bins (`max_bin`)
+> **Explain like I'm 5:** If your ruler only has centimetre marks, you can't measure millimetres.
+
+LightGBM and XGBoost first sort each feature into a limited number of buckets (255 by default) and only split between buckets. `merchant_risk_score` has 950 different values, so 3 to 4 values share each bucket and their individual signal blurs. `max_bin = 1023` gives most values their own bucket.
+
+### Splines and GAMs
+> **Explain like I'm 5:** Instead of a stiff ruler, use a bendy ruler that can follow a curved line.
+
+A **spline** turns one number into several smooth "bump" columns (`SplineTransformer`, 12 knots placed at quantiles). A logistic regression on those columns can draw a smooth curve for each feature. A model that adds up one curve per feature is a **GAM** (generalised additive model).
+
+### Explainable Boosting Machine (EBM)
+> **Explain like I'm 5:** Build one tiny "risk chart" per clue (age chart, velocity chart...), add up the charts, and allow only a few pairs of clues to talk to each other.
+
+The EBM (`interpret` library) cycles through features one at a time. For each, it fits a tiny tree with up to `max_bins` (1024) steps. It repeats thousands of times with a small learning rate, then adds a few pairwise interaction grids. Several bags (`outer_bags`) are averaged. The result is a GAM with very fine step curves, both accurate and readable. It fit this data well because fraud here is mostly a sum of separate effects.
+
+### GLM and `newton-cholesky`
+> **Explain like I'm 5:** Logistic regression is one member of a family of "add up weighted clues" models. Newton-Cholesky is a very precise way of finding the best weights, taking big, well-aimed steps instead of many small guesses.
+
+A **GLM** (generalised linear model) is logistic regression's family name. `solver="newton-cholesky"` uses exact second-derivative (Newton) steps. For a dense model with about 130 columns it converges in about 10 iterations to machine precision, where `lbfgs` can stop early. For very wide sparse models (v19, 62k columns) it's too memory-hungry, so we use `lbfgs`.
+
+### GLM-boost (`init_score` / `base_margin`)
+> **Explain like I'm 5:** First draft by the student, small fixes by the editor.
+
+Boosting normally starts from the average. With `init_score` (LightGBM) or `base_margin` (XGBoost), it starts from another model's log-odds, here the GLM's. Every tree then only learns corrections. Combined with **tiny trees** (4 leaves or depth 2), the trees fix bends and small interactions without re-learning the additive part.
+
+### Tiny trees (4 leaves / depth 2)
+> **Explain like I'm 5:** Instead of one long, complicated question ("is it a man over 40 with a red car on a Tuesday?"), ask thousands of short ones ("is it a man over 40?") and add up the answers.
+
+Tree depth controls how many features can interact in one rule. Depth 4 allows 4-way interactions. If the true pattern is mostly additive, those deep rules mostly fit noise. With 4 leaves, each tree is a simple 2-feature rule, and thousands of them are added up. In this project, smaller trees won every time (v22 vs v4, and GLM-boost).
+
+### Sparse one-hot GLM
+> **Explain like I'm 5:** Give every single exact value its own light switch (62,000 switches!), and let one careful scorecard decide how much each switch matters, all at the same time.
+
+v19 gives *every exact value* (seen at least 5 times) its own 0/1 column: 62,172 columns, stored as a **sparse matrix** (only the 1s are kept in memory). With strong L2 regularisation (`C = 0.01`), all those value effects are learned *jointly*, which is different from encoding each column separately.
+
+### Neural network (MLP)
+> **Explain like I'm 5:** Many layers of tiny calculators, each passing its answer to the next, slowly tuned until the final answer is good.
+
+An MLP (multi-layer perceptron) is layers of weighted sums with simple bends (`relu`) between them. We used scikit-learn's `MLPClassifier` with layers of 256 and 128 neurons, 12 passes over the data (**epochs**), and L2 penalty `alpha = 0.02`. There was no early stopping, so the validation fold was never used to pick an epoch. It needs **quantile-normalised** inputs (each number reshaped into a bell curve). Here it was weak (0.943) and unstable.
+
+### Full-data refit
+> **Explain like I'm 5:** After practising on 4 chapters at a time, study the whole book once before the real exam.
+
+After cross-validation, retrain once on *all* training rows with a tree count of (average best iterations × 1.2 for 5-fold, × 1.11 for 10-fold), because more data supports more trees. The target encodings then use 100% of the labels too. We use the refit's test predictions for submission and keep the CV score from the folds.
+
+### Seed bagging
+> **Explain like I'm 5:** Ask the same question three times with slightly different random warm-ups, then average the answers. Random slips cancel out.
+
+Train the same model with several random seeds (and several inner-encoding splits) and average. Each run makes slightly different random mistakes, and averaging cancels some of them. It's a cheap, small gain (v16: 1 seed 0.95115 → 3 seeds 0.95121).
+
+### Log-odds averaging of fold predictions
+> **Explain like I'm 5:** Before averaging five friends' scores, convert them all to the same scale, so one friend who always marks harshly doesn't drag everyone down.
+
+Each fold-model stops at a different number of trees, so its probabilities sit on a slightly different scale. Averaging in standardised log-odds (or ranks) instead of raw probabilities removes that drift. It changes the *test* prediction slightly. It doesn't make CV look better, and we don't use it to pick models.
+
+### Rank-logit
+> **Explain like I'm 5:** Turn every model's scores into "position in the line-up", then stretch the ends so the very top and very bottom stay clearly separated.
+
+rank-logit(x) = logit(rank(x) ÷ (n+1)). Every model's predictions get exactly the same distribution, whether it outputs probabilities, log-odds, a 5-fold average or a refit. The stacker then compares models fairly, and the OOF and test inputs look alike.
+
+### Nested stacking on fresh splits
+> **Explain like I'm 5:** The judge who decides how much to trust each expert must be tested on cases they didn't use to make up their mind, and on more than one set of cases.
+
+The stacker (meta-model) is trained on some rows' OOF predictions and scored on others. We use **different fold splits** (seeds 43, 44, 45) from the base models (seed 42), and average the score over 3 splits, so the stacker's score is honest and not tied to one lucky split.
+
+### Hill climbing (Caruana ensemble selection)
+> **Explain like I'm 5:** Start with no models in the team. Each round, add whichever model (even one already chosen) makes the team's score go up most. Stop when nothing helps.
+
+This gives non-negative weights, can't overfit badly, and is easy to understand. We compared it with logistic-regression stacking and a 50/50 mix of both.
+
+### Zero-fraud zones (post-processing)
+> **Explain like I'm 5:** If, in all the recordings, nobody ever stole from the shop's free-water fountain, you can stop watching the fountain.
+
+If, in every training fold, a region of the data contains *zero* frauds (here `merchant_risk_score < 13.1`), we push all test rows in that region to the very bottom of the ranking. This is a hand-made rule, so we only applied it after checking leak-free that it helped in all 5 folds, using the threshold learned from each fold's training rows only.
+
 ---
 
 # Extras
@@ -851,11 +1105,12 @@ Playground datasets are generated by a model trained on an original dataset (her
 
 ## 19. What to try next
 
-- **v9: add the original 20,000-row dataset to training** (needs `credit_card_fraud_2026.csv` in `data/`).
+- **Original dataset:** an outside review reported that adding the 20,000 original rows *hurts* here (distribution shift), so we skipped it. You can test it yourself: https://www.kaggle.com/datasets/uditjain13/credit-card-fraud-detection-2026
 - **Seed averaging:** train v4 with 5 seeds and average the predictions.
 - **Optuna** for automatic hyperparameter tuning.
 - **Stacking:** a logistic regression trained on the models' OOF predictions instead of fixed weights.
-- **A neural network** (MLP): different from trees, so more useful in the ensemble.
+- **A better neural network** (e.g. PyTorch with embeddings): our scikit-learn MLP was weak (0.943).
+- **More seeds / 10-fold for v16 and v18**, which helped v17.
 
 ## 20. Quick glossary
 
@@ -888,6 +1143,15 @@ Playground datasets are generated by a model trained on an original dataset (her
 | Stratified | Each fold keeps the same class balance |
 | Threshold | Score cut-off that turns probabilities into decisions |
 | Undersampling | Drop majority rows to balance classes |
+| WoE | Smoothed log-odds fraud score of an exact value |
+| Digit key | A piece of a number (cents, first two digits...) used as a category |
+| GLM | Logistic regression's family name: weighted sum of clues |
+| GLM-boost | Trees that start from a GLM's score and learn only corrections |
+| EBM | Additive model of fine step curves per feature |
+| Spline | Smooth bendy curve built from a few bump columns |
+| Full refit | Retraining on all data after CV, for the final submission |
+| Rank-logit | Ranks turned into log-odds so every model has the same scale |
+| Calibration | Predicted probabilities matching real rates |
 
 ---
 

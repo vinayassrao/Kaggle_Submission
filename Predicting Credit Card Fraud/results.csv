@@ -26,4 +26,5 @@ v22_lgb4_raw,0.94827,0.00333,836,"4-leaf LightGBM on raw 24 + 6 cents, no target
 v18_glm_xgb,0.95111,0.00317,1570,"GLM-boost xgb 5-fold, seeds 0:42,1:137,2:2026, 73 TE keys + digits (GLM alone 0.95063), full refit"
 v21_mlp_bag,0.94259,0.00426,1468,"sklearn MLP (256,128) fixed 12 epochs, 3 seeds, quantile nums + one-hots + 60 TE logits"
 v17_glm_lgb10,0.95149,0.00459,1497,"GLM-boost lgb 10-fold, seeds 0:42,1:137, 73 TE keys + digits (GLM alone 0.95087), full refit"
+v20_ebm_digits,0.94995,0.00318,1792,EBM (v11 settings) on raw + cents + 60 exact/digit TE logits
 v23_stack,0.95156,1e-05,0,"lr_C0.05 on rank-logits of v16_glm_lgb, v17_glm_lgb10, v18_glm_xgb, v19_sparse_glm, v21_mlp_bag, v22_lgb4_raw, v11_ebm, v10_spline_logreg; zero-fraud zones applied (+0.000021)"
