@@ -16,6 +16,7 @@ These rules apply to every Kaggle competition worked on in this folder (`e:\Kagg
 4. Avoid leakage: anything computed from the target must be built inside each CV fold.
 5. Write submissions to `<competition>/submissions/` in the exact format of `sample_submission.csv`.
 6. Give the user a **short** submission description for each file (one line, e.g. "LightGBM + engineered features (CV AUC 0.912)").
+8. **Reports for reviewers/other agents include the code:** whenever writing an implementation report (`.md`) or asking for a review/debug of a script, paste the **complete code of every newly created or modified `.py` script** in fenced ```python blocks inside the report (generate it from the files on disk so it matches exactly). Other agents don't share this filesystem.
 7. **Run heavy jobs one at a time** (training, CV, EBM, stacking, diagnostics). Never start a second one while another runs; the machine has 16.8 GB RAM and parallel jobs caused an out-of-memory crash. Chain them sequentially (`a && b && c`) or wait for completion.
 
 ## Beginner guide (required after every completed model)

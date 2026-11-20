@@ -15,7 +15,7 @@ Usage:
   python kaggle_v25_gpt2.py folds   --folds 0,2,4 [--epochs 4 --orders 8 --batch 128]   (writes v25_f{k}_val.npy / _test.npy)
   python kaggle_v25_gpt2.py kaggle  [--epochs 4 --orders 8]  (2 GPUs: launches folds 0,2,4 on GPU0 and 1,3 on GPU1)
   python kaggle_v25_gpt2.py collect [--data DIR] [--out DIR] (assemble v25_gpt2_oof.npy / v25_gpt2_test.npy)
-Defaults: --data = /kaggle/input/playground-series-s6e11 if it exists, else ./data ; --out = ./parts
+Defaults: --data = auto-discovered under /kaggle/input if it exists, else ./data ; --out = /kaggle/working or ./parts
 """
 import argparse
 import os
@@ -23,12 +23,22 @@ import subprocess
 import sys
 import time
 
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
+
+def _default_data_dir():
+    if os.path.isdir("/kaggle/input"):
+        hit = next(Path("/kaggle/input").rglob("train.csv"), None)
+        if hit is not None:
+            return str(hit.parent)
+    return "data"
+
+
 P = argparse.ArgumentParser()
 P.add_argument("mode", choices=["bench", "folds", "kaggle", "collect"])
-P.add_argument("--data", default="/kaggle/input/playground-series-s6e11" if os.path.isdir("/kaggle/input/playground-series-s6e11") else "data")
+P.add_argument("--data", default=_default_data_dir())
 P.add_argument("--out", default="/kaggle/working" if os.path.isdir("/kaggle/working") else "parts")
 P.add_argument("--folds", default="0,1,2,3,4")
 P.add_argument("--epochs", type=int, default=4)
@@ -56,9 +66,14 @@ def folds5():
     return list(StratifiedKFold(5, shuffle=True, random_state=42).split(np.zeros(n), y))
 
 
-if A.mode == "kaggle":   # two worker processes, one per GPU
+if A.mode == "kaggle":   # pre-cache HF weights once, then spawn one worker per available GPU
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    AutoTokenizer.from_pretrained("gpt2")
+    AutoModelForCausalLM.from_pretrained("gpt2")
+    plan = [(0, "0,2,4"), (1, "1,3")] if torch.cuda.device_count() >= 2 else [(0, A.folds)]
     procs = []
-    for gpu, fl in [(0, "0,2,4"), (1, "1,3")]:
+    for gpu, fl in plan:
         env = dict(os.environ, CUDA_VISIBLE_DEVICES=str(gpu))
         cmd = [sys.executable, __file__, "folds", "--folds", fl, "--epochs", str(A.epochs), "--orders", str(A.orders),
                "--batch", str(A.batch), "--lr", str(A.lr), "--data", A.data, "--out", A.out]
@@ -84,7 +99,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 
 torch.backends.cuda.matmul.allow_tf32 = True
 DEV = "cuda"
-AMP = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+# Use native BF16 only on Ampere+ (sm_80+); Kaggle T4 (sm_75) emulates BF16 slowly and needs FP16 Tensor Cores
+AMP = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
 
 # ---------------- pre-tokenise every field once ----------------
 both = pd.concat([train[FEATS], test[FEATS]], ignore_index=True)
@@ -135,6 +151,9 @@ def pack(rows_g, labels_g, perms_g):
 
 def new_model():
     m = AutoModelForCausalLM.from_pretrained("gpt2")
+    m.config.use_cache = False
+    for blk in m.transformer.h:
+        blk.mlp.act = torch.nn.GELU(approximate="tanh")  # fused CUDA kernel (5x less VRAM than Python NewGELU)
     m.resize_token_embeddings(len(tok))
     with torch.no_grad():
         E = m.transformer.wte.weight
@@ -157,6 +176,8 @@ def train_model(rows, epochs, seed, max_steps=None):
     steps = max_steps or epochs * int(np.ceil(len(rows) / A.batch))
     sch = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=A.lr, total_steps=steps, pct_start=0.05, anneal_strategy="cos")
     rows_g = torch.as_tensor(rows, device=DEV); yg = torch.as_tensor(y, device=DEV)
+    use_scaler = AMP == torch.float16
+    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
     t0, step, ntok = time.time(), 0, 0
     while step < steps:
         perm = rows_g[torch.randperm(len(rows_g), device=DEV, generator=g)]
@@ -167,18 +188,27 @@ def train_model(rows, epochs, seed, max_steps=None):
             labels = ids.masked_fill(att == 0, -100); labels[:, 0] = -100
             with torch.autocast("cuda", dtype=AMP):
                 loss = m(input_ids=ids, attention_mask=att, labels=labels).loss
-            opt.zero_grad(set_to_none=True); loss.backward()
-            torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0); opt.step(); sch.step()
+            opt.zero_grad(set_to_none=True)
+            scaler.scale(loss).backward()
+            scaler.unscale_(opt)
+            torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0)
+            scale_before = scaler.get_scale()
+            scaler.step(opt)
+            scaler.update()
+            if not use_scaler or scaler.get_scale() >= scale_before:
+                sch.step()
             step += 1; ntok += int(att.sum())
             if step % 500 == 0:
                 print(f"    step {step}/{steps} loss {loss.item():.4f} {ntok / (time.time() - t0):.0f} tok/s", flush=True)
             if step >= steps:
                 break
+    del opt, sch, scaler
+    torch.cuda.empty_cache()
     return m, ntok / (time.time() - t0)
 
 
 @torch.inference_mode()
-def score(m, rows, n_orders, bs=128, seed=2026):
+def score(m, rows, n_orders, bs=256, seed=2026):
     """Returns LLR [len(rows)] pooled over n_orders, plus per-order cumulative LLRs (for order-pooling diagnostics)."""
     m.eval(); rng = np.random.default_rng(seed)
     ll = np.zeros((len(rows), n_orders, 2))
@@ -189,7 +219,7 @@ def score(m, rows, n_orders, bs=128, seed=2026):
             rr = torch.cat([r, r]); labs = torch.cat([torch.zeros(b, device=DEV, dtype=torch.long), torch.ones(b, device=DEV, dtype=torch.long)])
             ids, att = pack(rr, labs, order[None].expand(2 * b, NC))
             with torch.autocast("cuda", dtype=AMP):
-                logits = m(input_ids=ids, attention_mask=att).logits[:, :-1]
+                logits = m(input_ids=ids, attention_mask=att, use_cache=False).logits[:, :-1]
             nll = F.cross_entropy(logits.float().transpose(1, 2), ids[:, 1:], reduction="none")
             tot = (-(nll * att[:, 1:])).double().sum(1).cpu().numpy()
             ll[s0:s0 + b, oi, 0], ll[s0:s0 + b, oi, 1] = tot[:b], tot[b:]
@@ -201,11 +231,9 @@ if A.mode == "bench":
     torch.cuda.reset_peak_memory_stats()
     t = time.time(); m, tps = train_model(tr, 1, 0, max_steps=A.steps); tt = time.time() - t
     sec_epoch = tt / A.steps * np.ceil(len(tr) / A.batch)
-    print(f"train {tps:.0f} tok/s -> {sec_epoch / 60:.1f} min/epoch ({len(tr):,} rows, batch {A.batch}); "
-          f"peak VRAM so far {torch.cuda.max_memory_allocated() / 1e9:.2f} GB", flush=True)
-    torch.cuda.empty_cache()
     t = time.time(); _ = score(m, va[:2000], 1); ts = (time.time() - t) / 2000
     print(f"V={V}  peak VRAM {torch.cuda.max_memory_allocated() / 1e9:.2f} GB")
+    print(f"train {tps:.0f} tok/s -> {sec_epoch / 60:.1f} min/epoch ({len(tr):,} rows, batch {A.batch})")
     print(f"score {1 / ts:.0f} rows/s per order (both labels)")
     for ep, K in [(1, 4), (2, 8), (4, 8)]:
         per_fold = ep * sec_epoch + K * ts * (len(va) + nt)
@@ -230,3 +258,5 @@ if A.mode == "folds":
         st, _ = score(m, TEST, A.orders)
         np.save(os.path.join(A.out, f"v25_f{k}_test.npy"), st)
         print(f"fold {k}: AUC {roc_auc_score(y[va], sv):.5f}  ({tps:.0f} tok/s, {(time.time() - t0) / 60:.0f} min)", flush=True)
+        del m
+        torch.cuda.empty_cache()
