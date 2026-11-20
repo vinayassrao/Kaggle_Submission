@@ -9,7 +9,7 @@
 This guide assumes you know **nothing** about machine learning. It has three parts:
 
 - **Part A: The project.** What the problem is and what the data looks like.
-- **Part B: The journey.** Thirty versions of the model, in three phases. For each one: **what changed, why it should help, and whether it actually did**, then four questions answered with the finished model.
+- **Part B: The journey.** Thirty-one versions of the model, in four phases. For each one: **what changed, why it should help, and whether it actually did**, then four questions answered with the finished model.
 - **Part C: Terms and techniques.** Every word and method used in this project, explained in depth: how it works, why we use it, and its key settings, plus an "Explain like I'm 5" version of each. Whenever a term in Parts A or B confuses you, jump to Part C.
 
 Every important idea has two explanations:
@@ -58,6 +58,8 @@ Every important idea has two explanations:
 - B3.4 v26 and v27 models without encodings
 - B3.5 v30 final stack
 
+**Part B4: Strict gates (P4.0 to v31)**
+
 15. The whole journey on one page
 16. Four questions answered with the model
 17. Submitting to Kaggle
@@ -73,7 +75,7 @@ Every important idea has two explanations:
 - C8 Understanding a model: gain and permutation importance
 - C9 Combining models: ensembles, rank averaging, weight search, correlation
 - C10 Kaggle-specific: public vs private leaderboard, synthetic data
-- C11 Advanced techniques: 10-fold CV, smoothing views, GPU, embeddings, digit CNN, generative classifier, calibration, WoE, digit keys, splines, EBM, GLM-boost, tiny trees, sparse GLM, MLP, refits, seed bagging, rank-logit stacking, hill climbing, zero-fraud zones
+- C11 Advanced techniques: gates, negative vs non-negative stack weights, vocabulary slicing, 10-fold CV, smoothing views, GPU, embeddings, digit CNN, generative classifier, calibration, WoE, digit keys, splines, EBM, GLM-boost, tiny trees, sparse GLM, MLP, refits, seed bagging, rank-logit stacking, hill climbing, zero-fraud zones
 
 **Extras**
 18. Common mistakes and how to fix them
@@ -577,9 +579,27 @@ Changes from v23:
 
 The stack now trusts three nearly equal GLM-boost models (v17b, v17, v28), plus the EBM and the digit CNN for diversity. Hill climbing splits 50/50 between v17 and v17b, where before it picked v17 alone.
 
-**Final result: 0.95166.**
+**Result: 0.95166** (Phase 4 adds v31, 0.95171).
 
 ![Progress](images/21_phase2_progress.png)
+
+# Part B4: Strict gates (P4.0 to v31)
+
+In this phase every new idea had to pass a **gate**: a single-fold pilot first, then a measurable gain in the stack. Most ideas failed, and that's normal.
+
+| Step | Idea | Result | Kept? |
+|---|---|---|---|
+| P4.0 | Save v28's inner GLM (logistic regression on the 73 encoded keys) as its own member | 0.95094 on its own | ✅ passed the stack gate (+0.00004, 4/5 folds) |
+| P4.1 | GPT-2 with a **sliced vocabulary** (988 tokens instead of 50,283) and batches built on the GPU | scoring **20× faster**, training only 1.4× faster (90 min per epoch) → still 19 to 53 hours on the laptop | prepared for Kaggle's GPUs, not run |
+| P4.3 | RealMLP with all 60 exact-value and digit keys as learned categories | fold-1 pilot 0.94806, below the 0.9493 gate | ❌ |
+| P4.4 | Digit CNN that keeps column positions (segment pooling) | fold-1 pilot 0.94585 vs v27's 0.94573: +0.00012, below the +0.0008 gate | ❌ |
+| v31 | v30 + the GLM member | **0.95171** (v30: 0.95166) | ✅ with a caveat |
+
+**The caveat: a negative weight.** The stack gave the GLM member a weight of **−0.47**. The GLM-boost models are "GLM + tree corrections", so subtracting the plain GLM isolates the tree corrections. Cross-validation says this generalises, but a stack restricted to non-negative weights scores only 0.95158. Because the gain (+0.00005) is within noise and relies on a negative weight, we submit **both** v30 and v31 and let the leaderboard decide.
+
+> **Explain like I'm 5:** The team captain says "take what Alice says, then subtract what Bob says". It works only because Alice copies Bob and then adds her own ideas. Clever, but fragile: if Alice changes how she copies, the trick breaks.
+
+**Lesson:** a gate stops you wasting hours on ideas that don't pay off. Three of the four ideas in this phase were stopped after a cheap pilot.
 
 ---
 
@@ -612,7 +632,9 @@ The stack now trusts three nearly equal GLM-boost models (v17b, v17, v28), plus 
 | v17b / v28 / v29 | 10-fold GLM-boost (smoothing 100), 10-fold GPU XGBoost, 10-fold sparse GLM | 0.95152 / 0.95150 / 0.95035 | +0.00003 (v17b) | ✅ best single (v17b) |
 | v25 | GPT-2 generative classifier | not run (~114 h on laptop GPU) | - | ❌ |
 | v26 / v27 | RealMLP / digit CNN, no encodings | 0.94747 / 0.94783 | below | v27 in stack |
-| v30 | Final stack (native-fold standardisation, C grid) | **0.95166** | +0.00010 | ✅ **best** |
+| v30 | Stack (native-fold standardisation, C grid) | 0.95166 | +0.00010 | ✅ |
+| P4.0 / v26b / v27b | GLM member / key-category RealMLP pilot / position CNN pilot | 0.95094 / 0.94806 (fold 1) / 0.94585 (fold 1) | gates | GLM ✅, others ❌ |
+| v31 | v30 + GLM member (negative weight) | **0.95171** | +0.00005 | ✅ **best** (submit with v30) |
 
 **Five big lessons**
 
@@ -675,10 +697,10 @@ Here is the confusion matrix when flagging the top 2%:
 
 Every script writes `submissions/<version>.csv` in the required format (299,984 rows, columns `id,is_fraud`).
 
-Upload **`v30_stack.csv`** first (best CV), then `v17b_glm_lgb10_s100.csv` to compare. Short descriptions:
+Upload **`v30_stack.csv`** and **`v31_stack.csv`** (their CV difference is within noise, and v31 relies on one negative weight). Short descriptions:
 
 - v30: *"Stack: 10-fold GLM-boost LGB/XGB + EBM + digit CNN, rank-logit LogReg (CV AUC 0.95166)"*
-- v17b: *"Digit keys + GLM + 4-leaf LightGBM, 10-fold, smoothing 100 (CV AUC 0.95152)"*
+- v31: *"v30 + pure GLM member, LogReg C=0.05 (CV AUC 0.95171)"*
 
 The public leaderboard scores only part of the test set (C10), so trust CV over small leaderboard differences.
 
@@ -1188,6 +1210,18 @@ Instead of predicting the label directly, model how likely the row is under each
 
 ### Benchmark before you commit
 Time a small piece of any expensive job (a few hundred training steps, a few thousand predictions) and extrapolate before launching the full run.
+
+
+### Gates (pilot and marginal-gain checks)
+> **Explain like I'm 5:** Before cooking a whole new recipe for the party, taste one spoonful. Only cook the big pot if the spoonful is good, and only serve it if it makes the meal better.
+
+A **pilot gate** runs a new model on one fold first and continues only if it beats a set score. A **marginal-gain gate** adds a finished model to the stack and keeps it only if the stack's nested CV improves by a set amount (here +0.00004) and in most folds (4 of 5). Gates save time and stop the stack from filling up with models that add only noise.
+
+### Negative vs non-negative stacking weights
+An unconstrained stacker (logistic regression) may give a model a **negative** weight, meaning it subtracts that model. That can be genuinely useful, for example to remove a shared component, but it's riskier: it relies on the relationship between models staying exactly the same on the test set. A **non-negative** stacker (weights ≥ 0, here L2 logistic regression solved with L-BFGS-B bounds) is safer but may score a little lower. When the two are close, prefer the non-negative one. When the unconstrained one wins only by noise-sized margins, hedge by submitting both.
+
+### Vocabulary slicing for language models
+A language model's output layer scores every word in its vocabulary at every position (50,283 for GPT-2). If your data only ever uses a few hundred tokens, you can keep just those rows of the embedding and output matrices. The model gives the same answers for those tokens, but the output layer becomes ~50× smaller and much faster.
 
 ---
 
