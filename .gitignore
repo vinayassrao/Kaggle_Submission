@@ -21,3 +21,4 @@ Predicting Credit Card Fraud/parts/
 !Predicting Credit Card Fraud/submissions/v32_stack.csv
 !Predicting Credit Card Fraud/submissions/v32_conservative.csv
 Predicting Credit Card Fraud/kaggle_out/**/*.npy
+Predicting Credit Card Fraud/kaggle_out/lb/
