@@ -24,13 +24,13 @@ Optional original dataset (CC0, 20k rows): https://www.kaggle.com/datasets/uditj
 | v4 | `v4_lightgbm_tuned.py` | Regularised LightGBM (depth 4, lr 0.02, sampling) | 0.94737 | - |
 | v5 | `v5_xgboost.py` | XGBoost | 0.94712 | - |
 | v6 | `v6_catboost.py` | CatBoost | 0.94619 | - |
-| v7 | `v7_ensemble.py` | Weighted rank blend of v4/v5/v6/v1 | **0.94744** | - |
+| v7 | `v7_ensemble.py` | Weighted rank blend of v4/v5/v6/v1 | **0.94744** | **0.94786** |
 | v8 | `v8_imbalance.py` | Class weights / undersampling / SMOTE-NC on v4 (none helped; SMOTE 0.916) | 0.94641-0.94728 | - |
 | v9 | `v9_lightgbm_woe.py` (+ `fe_v9.py`) | In-fold exact-value WoE, residual WoE, max_bin 1023 | 0.94855 | - |
 | v10 | `v10_spline_logreg.py` | Spline logistic regression + WoE | 0.94721 | - |
 | v11 | `v11_ebm.py` | Explainable Boosting Machine | 0.94927 | - |
 | v12 / v13 / v14 | `v12_xgboost_woe.py`, `v13_catboost_woe.py`, `v14_lightgbm_extratrees.py` | Old boosters + WoE features | 0.94847 / 0.94780 / 0.94758 | - |
-| v15 | `v15_stack.py` | Leak-free LogReg stack of v9-v14 | 0.94941 | - |
+| v15 | `v15_stack.py` | Leak-free LogReg stack of v9-v14 | 0.94941 | **0.95010** |
 | v16 | `v16_glm_boost.py` (+ `fe_keys.py`) | 73 TE keys (exact + digit + pair) → GLM → 4-leaf LightGBM, 3 seeds, full refit | 0.95121 | - |
 | v17 | `v16_glm_boost.py v17_glm_lgb10 lgb 10 ...` | Same, 10-fold, 2 seeds | **0.95149** (best single) | - |
 | v18 | `v16_glm_boost.py v18_glm_xgb xgb 5 ...` | GLM → depth-2 XGBoost | 0.95111 | - |
@@ -42,13 +42,13 @@ Optional original dataset (CC0, 20k rows): https://www.kaggle.com/datasets/uditj
 | v25 | `v25_gpt2.py` | Label-first GPT-2 generative classifier: **not run** (benchmark: ~114 h on the RTX 3050) | - | - |
 | v26 | `v26_realmlp.py` | RealMLP (pytabkit, GPU), no target encoding | 0.94747 | - |
 | v27 | `v27_digit_cnn.py` | 1-D character/digit CNN (GPU), no target encoding | 0.94783 | - |
-| v30 | `v30_stack.py` | Rank-logit LogReg stack (native-fold standardisation, C grid) of 10 models + zero-fraud zones | **0.95166** | - |
+| v30 | `v30_stack.py` | Rank-logit LogReg stack (native-fold standardisation, C grid) of 10 models + zero-fraud zones | **0.95166** | **0.95128** |
 | P4.0 | `p4_glm_only.py` | v28's pure 10-fold dense GLM as its own member | 0.95094 | - |
 | v25 | `kaggle_v25_gpt2.py` (run on **Kaggle 2× T4**, 11.6 h, 4 epochs, 8 orders) | Compact-vocab label-first GPT-2 generative classifier, no TE | 0.94836 | - |
 | v26b / v27b | `v26b_realmlp_keys.py`, `v27b_digit_cnn_seg.py` | Fold-1 pilots: 0.94806 (gate 0.9493) / 0.94585 (gate +0.0008 over v27) — both failed the gate | - | - |
 | v31 | `v31_stack.py` | v30 pool + GLM-only (gate +0.00004, 4/5 folds), LogReg C=0.05 (GLM-only gets a **negative** weight); non-negative stacker 0.95158 | 0.95171 | - |
-| **v32** | `v32_stack.py` | v31 pool + v25 GPT-2 (gate: +0.00009, 12/15 folds; GPT-2 coef +0.312, top non-negative weight 0.218) | **0.95180** | - |
-| v23 | `v23_stack.py` | Rank-logit LogReg stack (nested on 3 fresh splits) + zero-fraud zones | **0.95156** | - |
+| **v32** | `v32_stack.py` | v31 pool + v25 GPT-2 (gate: +0.00009, 12/15 folds; GPT-2 coef +0.312, top non-negative weight 0.218) | **0.95180** | **0.95154** |
+| v23 | `v23_stack.py` | Rank-logit LogReg stack (nested on 3 fresh splits) + zero-fraud zones | **0.95156** | **0.95166** |
 
 `common.py` holds data loading, features and the shared CV runner. Every run appends to `results.csv` and writes `oof/` predictions plus `submissions/<version>.csv`.
 `analysis.py` answers the original dataset's questions: feature importance, PR-AUC (0.514) and threshold tuning, AI-scam detection, authentication (`analysis_results.txt`).
