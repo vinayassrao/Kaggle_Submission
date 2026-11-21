@@ -9,7 +9,7 @@
 This guide assumes you know **nothing** about machine learning. It has three parts:
 
 - **Part A: The project.** What the problem is and what the data looks like.
-- **Part B: The journey.** Thirty-one versions of the model, in four phases. For each one: **what changed, why it should help, and whether it actually did**, then four questions answered with the finished model.
+- **Part B: The journey.** Thirty-two versions of the model, in four phases. For each one: **what changed, why it should help, and whether it actually did**, then four questions answered with the finished model.
 - **Part C: Terms and techniques.** Every word and method used in this project, explained in depth: how it works, why we use it, and its key settings, plus an "Explain like I'm 5" version of each. Whenever a term in Parts A or B confuses you, jump to Part C.
 
 Every important idea has two explanations:
@@ -58,7 +58,8 @@ Every important idea has two explanations:
 - B3.4 v26 and v27 models without encodings
 - B3.5 v30 final stack
 
-**Part B4: Strict gates (P4.0 to v31)**
+**Part B4: Strict gates (P4.0 to v32)**
+- B4.1 v25 GPT-2 on Kaggle, and v32
 
 15. The whole journey on one page
 16. Four questions answered with the model
@@ -583,7 +584,7 @@ The stack now trusts three nearly equal GLM-boost models (v17b, v17, v28), plus 
 
 ![Progress](images/21_phase2_progress.png)
 
-# Part B4: Strict gates (P4.0 to v31)
+# Part B4: Strict gates (P4.0 to v32)
 
 In this phase every new idea had to pass a **gate**: a single-fold pilot first, then a measurable gain in the stack. Most ideas failed, and that's normal.
 
@@ -600,6 +601,24 @@ In this phase every new idea had to pass a **gate**: a single-fold pilot first, 
 > **Explain like I'm 5:** The team captain says "take what Alice says, then subtract what Bob says". It works only because Alice copies Bob and then adds her own ideas. Clever, but fragile: if Alice changes how she copies, the trick breaks.
 
 **Lesson:** a gate stops you wasting hours on ideas that don't pay off. Three of the four ideas in this phase were stopped after a cheap pilot.
+
+## B4.1 v25: GPT-2 on Kaggle's GPUs, and v32
+
+The laptop was too slow for GPT-2, so the same script (`kaggle_v25_gpt2.py`) ran on **Kaggle's free 2× T4 GPUs**: folds 0, 2, 4 on one GPU and folds 1, 3 on the other, at the same time. It took **11.6 hours** (4 epochs and 8 column orders per fold, about 3.8 hours per fold), just inside Kaggle's 12-hour session limit. The results were downloaded with the **Kaggle command-line tool** and checked locally: row counts, fold AUCs, and a rebuild from the per-fold files.
+
+| | Value |
+|---|---|
+| GPT-2 CV AUC on its own | 0.94836 |
+| Fold 0 with 1 / 2 / 4 / 8 column orders | 0.94592 / 0.94603 / 0.94655 / 0.94652, so the gain stops after 4 orders |
+| Correlation with v17 | **0.952**, the most *different* model in the project |
+
+> **Explain like I'm 5:** GPT-2 learned to "write" normal transactions and fraudulent ones. For a new transaction we ask: "Does this look more like something you'd write when pretending to be a fraudster, or a normal customer?"
+
+**The gate story:** checked on its own against the v30 pool with the strict 5-fold rule, GPT-2 gave the biggest gain of any candidate (+0.00007), but improved only 3 of 5 folds, so it was dropped. Rechecked properly, added on top of the final v31 pool and counting folds over all 3 splits (15 folds), it gives **+0.00009 on every split and improves 12 of 15 folds**. So it was kept.
+
+**v32 = v31 + GPT-2: 0.95180** (v31 0.95171, v30 0.95166). Even in the non-negative stack, GPT-2 gets the **largest weight of all (0.218)**. Its value doesn't depend on any negative-weight trick, because it simply sees the data differently.
+
+**Lesson:** a gate decided on only 5 folds can be too noisy. When a candidate is borderline, recheck it on more folds before throwing it away.
 
 ---
 
@@ -630,11 +649,13 @@ In this phase every new idea had to pass a **gate**: a single-fold pilot first, 
 | v23 | Rank-logit stack + zero-fraud zones | 0.95156 | +0.00007 | ✅ |
 | v24 | PyTorch neural network on GPU (same encodings) | 0.94863 | below | ❌ no stack weight |
 | v17b / v28 / v29 | 10-fold GLM-boost (smoothing 100), 10-fold GPU XGBoost, 10-fold sparse GLM | 0.95152 / 0.95150 / 0.95035 | +0.00003 (v17b) | ✅ best single (v17b) |
-| v25 | GPT-2 generative classifier | not run (~114 h on laptop GPU) | - | ❌ |
+| v25 (laptop) | GPT-2 generative classifier | ~114 h on the laptop GPU, so moved to Kaggle (see B4.1) | - | - |
 | v26 / v27 | RealMLP / digit CNN, no encodings | 0.94747 / 0.94783 | below | v27 in stack |
 | v30 | Stack (native-fold standardisation, C grid) | 0.95166 | +0.00010 | ✅ |
 | P4.0 / v26b / v27b | GLM member / key-category RealMLP pilot / position CNN pilot | 0.95094 / 0.94806 (fold 1) / 0.94585 (fold 1) | gates | GLM ✅, others ❌ |
-| v31 | v30 + GLM member (negative weight) | **0.95171** | +0.00005 | ✅ **best** (submit with v30) |
+| v31 | v30 + GLM member (negative weight) | 0.95171 | +0.00005 | ✅ |
+| v25 | GPT-2 generative classifier, run on Kaggle 2× T4 (11.6 h) | 0.94836 | below (solo) | in stack |
+| v32 | v31 + GPT-2 | **0.95180** | +0.00009 | ✅ **best** |
 
 **Five big lessons**
 
@@ -697,10 +718,10 @@ Here is the confusion matrix when flagging the top 2%:
 
 Every script writes `submissions/<version>.csv` in the required format (299,984 rows, columns `id,is_fraud`).
 
-Upload **`v30_stack.csv`** and **`v31_stack.csv`** (their CV difference is within noise, and v31 relies on one negative weight). Short descriptions:
+Upload **`v32_stack.csv`** (best CV) and keep **`v32_conservative.csv`** (non-negative weights) as the second choice. Short descriptions:
 
-- v30: *"Stack: 10-fold GLM-boost LGB/XGB + EBM + digit CNN, rank-logit LogReg (CV AUC 0.95166)"*
-- v31: *"v30 + pure GLM member, LogReg C=0.05 (CV AUC 0.95171)"*
+- v32: *"Stack + GPT-2 generative classifier, rank-logit LogReg (CV AUC 0.95180)"*
+- v32 conservative: *"Non-negative stack incl. GPT-2, fold-mean test inputs (CV AUC 0.95164)"*
 
 The public leaderboard scores only part of the test set (C10), so trust CV over small leaderboard differences.
 
