@@ -37,3 +37,4 @@ v27_digit_cnn,0.94783,0.0034,3277,"1-D char/digit CNN on GPU, no target encoding
 v30_stack,0.95166,1e-05,0,"lr_C0.05 on rank-logits of v17_glm_lgb10, v17b_glm_lgb10_s100, v28_glm_xgb10_gpu, v19_sparse_glm_10f, v16_glm_lgb, v26_realmlp, v27_digit_cnn, v11_ebm, v22_lgb4_raw, v10_spline_logreg; zero-fraud zones applied (+0.000034)"
 v28_glm_only,0.95094,0.00466,585,"Pure 10-fold dense GLM (v28's init_score model), 4 encoding seeds m20/m100, full refit"
 v31_stack,0.95171,1e-05,0,lr_C0.05 on 11 members (kept: v28_glm_only); zones on
+v32_stack,0.9518,1e-05,0,lr_C0.05 on 12 members (kept: v25_gpt2); zones on
